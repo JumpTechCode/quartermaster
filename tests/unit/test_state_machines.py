@@ -21,8 +21,10 @@ from quartermaster.domain.errors import IllegalTransition
 from quartermaster.domain.state_machines import (
     ORDER_MACHINE,
     RECEIPT_MACHINE,
+    RESERVATION_MACHINE,
     OrderState,
     ReceiptState,
+    ReservationState,
     StateMachine,
 )
 
@@ -59,6 +61,19 @@ LEGAL_ORDER_TRANSITIONS: set[tuple[OrderState, OrderState]] = {
 }
 TERMINAL_ORDER_STATES: set[OrderState] = {OrderState.CLOSED, OrderState.CANCELLED}
 
+LEGAL_RESERVATION_TRANSITIONS: set[tuple[ReservationState, ReservationState]] = {
+    (ReservationState.HELD, ReservationState.CONSUMED),
+    (ReservationState.HELD, ReservationState.RELEASED),
+    (ReservationState.HELD, ReservationState.EXPIRED),
+    # consumed (pick) / released (cancel) / expired (TTL reaper) are terminal.
+    # released and expired both lower qty_reserved but stay distinct for audit.
+}
+TERMINAL_RESERVATION_STATES: set[ReservationState] = {
+    ReservationState.CONSUMED,
+    ReservationState.RELEASED,
+    ReservationState.EXPIRED,
+}
+
 
 @dataclass(frozen=True)
 class Case:
@@ -76,6 +91,13 @@ CASES: list[Case] = [
         "receipt", RECEIPT_MACHINE, ReceiptState, LEGAL_RECEIPT_TRANSITIONS, TERMINAL_RECEIPT_STATES
     ),
     Case("order", ORDER_MACHINE, OrderState, LEGAL_ORDER_TRANSITIONS, TERMINAL_ORDER_STATES),
+    Case(
+        "reservation",
+        RESERVATION_MACHINE,
+        ReservationState,
+        LEGAL_RESERVATION_TRANSITIONS,
+        TERMINAL_RESERVATION_STATES,
+    ),
 ]
 CASE_IDS = [c.name for c in CASES]
 
@@ -142,6 +164,7 @@ def test_assert_legal_raises_on_illegal_transition(case: Case) -> None:
 def test_machines_are_named_for_diagnostics() -> None:
     assert RECEIPT_MACHINE.name == "receipt"
     assert ORDER_MACHINE.name == "order"
+    assert RESERVATION_MACHINE.name == "reservation"
 
 
 def test_state_is_usable_as_its_database_string() -> None:

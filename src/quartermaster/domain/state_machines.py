@@ -52,6 +52,15 @@ class OrderState(StrEnum):
     CANCELLED = "cancelled"
 
 
+class ReservationState(StrEnum):
+    """Reservation lifecycle (design spec §3, §5.4)."""
+
+    HELD = "held"
+    CONSUMED = "consumed"
+    RELEASED = "released"
+    EXPIRED = "expired"
+
+
 @dataclass(frozen=True)
 class StateMachine[S: Enum]:
     """A table-driven guard over a document's legal state transitions.
@@ -115,5 +124,23 @@ ORDER_MACHINE: StateMachine[OrderState] = StateMachine(
         OrderState.SHIPPED: frozenset({OrderState.CLOSED}),
         OrderState.CLOSED: frozenset(),
         OrderState.CANCELLED: frozenset(),
+    },
+)
+
+RESERVATION_MACHINE: StateMachine[ReservationState] = StateMachine(
+    name="reservation",
+    transitions={
+        # held is the only non-terminal state: a reservation is consumed by a
+        # pick, released by an explicit cancel, or expired by the TTL reaper.
+        ReservationState.HELD: frozenset(
+            {
+                ReservationState.CONSUMED,
+                ReservationState.RELEASED,
+                ReservationState.EXPIRED,
+            }
+        ),
+        ReservationState.CONSUMED: frozenset(),
+        ReservationState.RELEASED: frozenset(),
+        ReservationState.EXPIRED: frozenset(),
     },
 )
