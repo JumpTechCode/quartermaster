@@ -26,7 +26,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
       - name: install
-        run: uv sync --dev
+        run: uv sync --locked --dev
       - name: format check
         run: uv run ruff format --check .
       - name: lint
@@ -42,7 +42,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
       - name: install
-        run: uv sync --dev
+        run: uv sync --locked --dev
       - name: mypy
         run: uv run mypy
 
@@ -56,7 +56,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
       - name: install
-        run: uv sync --dev
+        run: uv sync --locked --dev
       - name: lint-imports
         run: uv run lint-imports
 
@@ -70,7 +70,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
       - name: install
-        run: uv sync --dev
+        run: uv sync --locked --dev
       - name: test (coverage >= 80%)
         run: uv run pytest -m "not integration" --cov=quartermaster --cov-report=term-missing --cov-fail-under=80
 
@@ -84,6 +84,6 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
       - name: install
-        run: uv sync --dev
+        run: uv sync --locked --dev
       - name: pip-audit
         run: uv run pip-audit

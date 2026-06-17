@@ -2,16 +2,20 @@
 #
 # `make verify` mirrors the checks that gate every pull request in CI.
 
-.PHONY: all verify sync fmt lint typecheck imports test cover audit clean
+.PHONY: all verify sync locked fmt lint typecheck imports test cover audit clean
 
 all: verify
 
 ## verify: run the full set of CI gates locally
-verify: lint typecheck imports cover audit
+verify: locked lint typecheck imports cover audit
 
 ## sync: install the project and dev dependencies into the uv environment
 sync:
-	uv sync --dev
+	uv sync --locked --dev
+
+## locked: fail if uv.lock is stale relative to pyproject.toml (no relock)
+locked:
+	uv lock --check
 
 ## fmt: format and autofix the tree in place
 fmt:
