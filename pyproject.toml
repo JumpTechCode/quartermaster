@@ -26,7 +26,7 @@ dev = [
     "pytest-cov>=6.0",
     "hypothesis>=6.112",
     "ruff>=0.7",
-    "mypy>=1.13",
+    "mypy>=2.1.0",
     "import-linter>=2.1",
     "pip-audit>=2.7",
 ]
