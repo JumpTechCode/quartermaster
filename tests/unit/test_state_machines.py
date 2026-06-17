@@ -47,12 +47,14 @@ LEGAL_ORDER_TRANSITIONS: set[tuple[OrderState, OrderState]] = {
     (OrderState.ALLOCATED, OrderState.CANCELLED),
     (OrderState.BACKORDERED, OrderState.ALLOCATED),
     (OrderState.BACKORDERED, OrderState.CANCELLED),
+    # cancel is release-only and stops here: created/allocated/backordered are
+    # the states that still hold (or have yet to take) reservations, so cancel
+    # is a pure -reserved release. Once a pick starts, stock has physically left
+    # the shelf; unwinding it is a restock that flows through the Receipt/RMA
+    # path, never an inline state flip. See ADR / spec §4 ("pre-pick").
     (OrderState.PICKING, OrderState.PICKED),
-    (OrderState.PICKING, OrderState.CANCELLED),
     (OrderState.PICKED, OrderState.PACKED),
-    (OrderState.PICKED, OrderState.CANCELLED),
     (OrderState.PACKED, OrderState.SHIPPED),
-    (OrderState.PACKED, OrderState.CANCELLED),
     (OrderState.SHIPPED, OrderState.CLOSED),
 }
 TERMINAL_ORDER_STATES: set[OrderState] = {OrderState.CLOSED, OrderState.CANCELLED}

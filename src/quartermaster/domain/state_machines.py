@@ -105,9 +105,13 @@ ORDER_MACHINE: StateMachine[OrderState] = StateMachine(
         ),
         OrderState.ALLOCATED: frozenset({OrderState.PICKING, OrderState.CANCELLED}),
         OrderState.BACKORDERED: frozenset({OrderState.ALLOCATED, OrderState.CANCELLED}),
-        OrderState.PICKING: frozenset({OrderState.PICKED, OrderState.CANCELLED}),
-        OrderState.PICKED: frozenset({OrderState.PACKED, OrderState.CANCELLED}),
-        OrderState.PACKED: frozenset({OrderState.SHIPPED, OrderState.CANCELLED}),
+        # cancel is release-only: legal only while reservations are still held
+        # (created/allocated/backordered). From picking onward stock has left the
+        # shelf, so the unwind is a physical restock via the Receipt/RMA path —
+        # not an inline cancel. Spec §4 ("pre-pick").
+        OrderState.PICKING: frozenset({OrderState.PICKED}),
+        OrderState.PICKED: frozenset({OrderState.PACKED}),
+        OrderState.PACKED: frozenset({OrderState.SHIPPED}),
         OrderState.SHIPPED: frozenset({OrderState.CLOSED}),
         OrderState.CLOSED: frozenset(),
         OrderState.CANCELLED: frozenset(),
