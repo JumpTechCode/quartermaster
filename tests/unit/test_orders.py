@@ -93,7 +93,7 @@ def test_is_fully_allocated() -> None:
 # --- guarded operations -----------------------------------------------------
 
 
-def test_allocate_raises_allocated() -> None:
+def test_allocate_advances_allocated() -> None:
     assert line(10, 4, 0, 0).allocate(3) == line(10, 7, 0, 0)
 
 
@@ -102,7 +102,7 @@ def test_allocate_beyond_ordered_raises() -> None:
         line(10, 8, 0, 0).allocate(3)
 
 
-def test_pick_raises_picked() -> None:
+def test_pick_advances_picked() -> None:
     assert line(10, 6, 2, 0).pick(3) == line(10, 6, 5, 0)
 
 
@@ -111,7 +111,7 @@ def test_pick_beyond_allocated_raises() -> None:
         line(10, 6, 5, 0).pick(2)
 
 
-def test_ship_raises_shipped() -> None:
+def test_ship_advances_shipped() -> None:
     assert line(10, 6, 5, 1).ship(3) == line(10, 6, 5, 4)
 
 

@@ -2,8 +2,8 @@
 
 Every stock state change appends a ``Movement``. The ledger is the audit and
 conservation-oracle source (design spec §3, §7): the offline oracle sums only the
-on-hand-affecting types - ``RECEIVE`` (+), ``PICK`` (-), and ``PUTAWAY``
-(net-zero relocation between locations) - while ``RESERVE``/``RELEASE`` touch
+on-hand-affecting types — ``RECEIVE`` (+), ``PICK`` (-), and ``PUTAWAY``
+(net-zero relocation between locations) — while ``RESERVE``/``RELEASE`` touch
 ``reserved``, not on-hand. It is never summed on the command path. The detailed
 type-to-location rules are enforced where commands build movements (a later
 slice); here the record carries the faithful shape and the one structural

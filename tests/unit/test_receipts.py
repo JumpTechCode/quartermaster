@@ -44,7 +44,7 @@ def test_shortfall_and_completeness() -> None:
     assert rline(10, 10).is_complete is True
 
 
-def test_receive_raises_received() -> None:
+def test_receive_advances_received() -> None:
     assert rline(10, 4).receive(3) == rline(10, 7)
 
 

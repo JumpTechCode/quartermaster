@@ -1,5 +1,5 @@
 """Movement is the append-only ledger record (design spec §3, §7). The offline
-conservation oracle sums only the on-hand-affecting types (RECEIVE +, PICK -,
+conservation oracle sums only the on-hand-affecting types (RECEIVE +, PICK —,
 PUTAWAY net-zero); the record itself carries the faithful shape and the one
 structural invariant that always holds: a movement moves a positive quantity.
 """
