@@ -9,6 +9,7 @@ from quartermaster.domain.errors import (
     IllegalTransition,
     InsufficientStock,
     InvariantViolation,
+    OrderNotFound,
     QuartermasterError,
 )
 
@@ -17,6 +18,7 @@ DOMAIN_ERRORS: list[type[QuartermasterError]] = [
     IllegalTransition,
     InsufficientStock,
     IdempotencyKeyReuse,
+    OrderNotFound,
 ]
 
 
@@ -29,3 +31,7 @@ def test_domain_errors_subclass_base(error_type: type[QuartermasterError]) -> No
 def test_domain_errors_are_catchable_as_base(error_type: type[QuartermasterError]) -> None:
     with pytest.raises(QuartermasterError):
         raise error_type("boom")
+
+
+def test_order_not_found_is_a_quartermaster_error() -> None:
+    assert issubclass(OrderNotFound, QuartermasterError)

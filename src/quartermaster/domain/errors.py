@@ -26,3 +26,7 @@ class InsufficientStock(QuartermasterError):
 
 class IdempotencyKeyReuse(QuartermasterError):
     """An idempotency key was reused with a different command fingerprint."""
+
+
+class OrderNotFound(QuartermasterError):
+    """A command referenced an order that does not exist (a hard rejection)."""
