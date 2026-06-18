@@ -134,12 +134,14 @@ class FakeUnitOfWork:
         self,
         stock: FakeStockRepo | None = None,
         orders: FakeOrderRepo | None = None,
+        reservations: FakeReservationRepo | None = None,
+        movements: FakeMovementRepo | None = None,
         idempotency: FakeIdempotencyRepo | None = None,
     ) -> None:
         self.stock: StockRepo = stock or FakeStockRepo()
         self.orders: OrderRepo = orders or FakeOrderRepo()
-        self.reservations: ReservationRepo = FakeReservationRepo()
-        self.movements: MovementRepo = FakeMovementRepo()
+        self.reservations: ReservationRepo = reservations or FakeReservationRepo()
+        self.movements: MovementRepo = movements or FakeMovementRepo()
         self.idempotency: IdempotencyRepo = idempotency or FakeIdempotencyRepo()
         self.commits = 0
         self.rollbacks = 0
