@@ -1,8 +1,11 @@
 # Quartermaster developer tasks.
 #
-# `make verify` mirrors the checks that gate every pull request in CI.
+# `make verify` mirrors the checks that gate every pull request in CI. The
+# coverage step runs the integration tests against a real Postgres via
+# testcontainers, so `make verify` (and `make cover`/`make test-integration`)
+# require Docker. `make test` stays unit-only and needs no Docker.
 
-.PHONY: all verify sync locked fmt lint typecheck imports test cover audit clean
+.PHONY: all verify sync locked fmt lint typecheck imports test test-integration cover audit clean
 
 all: verify
 
@@ -35,13 +38,17 @@ typecheck:
 imports:
 	uv run lint-imports
 
-## test: run the unit test suite (excludes integration tests)
+## test: run the unit test suite (no Docker)
 test:
 	uv run pytest -m "not integration"
 
-## cover: run tests and enforce the coverage threshold
+## test-integration: run the integration suite against real Postgres (Docker)
+test-integration:
+	uv run pytest -m integration
+
+## cover: run the full suite (unit + integration) and enforce the coverage threshold (Docker)
 cover:
-	uv run pytest -m "not integration" --cov=quartermaster --cov-report=term-missing --cov-fail-under=80
+	uv run pytest --cov=quartermaster --cov-report=term-missing --cov-fail-under=80
 
 ## audit: scan dependencies for known vulnerabilities
 audit:

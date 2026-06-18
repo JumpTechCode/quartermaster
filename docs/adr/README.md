@@ -23,6 +23,7 @@ The format follows Michael Nygard's
 - [0012 — Architectural boundaries are enforced by import-linter](0012-import-linter-boundaries.md)
 - [0013 — Entity identity typing: NewType over primitives, natural codes, UUID document IDs](0013-entity-identity-typing.md)
 - [0014 — Postgres-early testing with testcontainers](0014-postgres-early-testcontainers.md)
+- [0015 — UUIDv7 for document identifiers, generated app-side](0015-uuidv7-document-ids.md)
 
 ## Adding a record
 

@@ -71,8 +71,8 @@ jobs:
           enable-cache: true
       - name: install
         run: uv sync --locked --dev
-      - name: test (coverage >= 80%)
-        run: uv run pytest -m "not integration" --cov=quartermaster --cov-report=term-missing --cov-fail-under=80
+      - name: test (full suite, coverage >= 80%)
+        run: uv run pytest --cov=quartermaster --cov-report=term-missing --cov-fail-under=80
 
   audit:
     name: pip-audit
