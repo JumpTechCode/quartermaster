@@ -141,8 +141,6 @@ async def test_occ_conflict_exhausts_retries() -> None:
 
 
 async def test_replay_of_cached_rejection_reraises() -> None:
-    from quartermaster.domain.errors import IllegalTransition
-
     stored = StoredResponse(
         "fp",
         IdempotencyStatus.REJECTED,

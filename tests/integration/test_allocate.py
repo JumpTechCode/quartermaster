@@ -11,7 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from quartermaster.adapters.postgres.identifiers import new_movement_id, new_reservation_id
-from quartermaster.adapters.postgres.tables import orders, reservation
+from quartermaster.adapters.postgres.tables import (
+    idempotency_key,
+    movement,
+    orders,
+    reservation,
+    stock,
+)
 from quartermaster.adapters.postgres.unit_of_work import postgres_uow_factory
 from quartermaster.application.clock import system_clock
 from quartermaster.application.handlers.allocate import run_allocate
@@ -51,6 +57,35 @@ async def test_full_allocation(committed_db: AsyncEngine) -> None:
             await conn.execute(select(orders.c.state).where(orders.c.order_id == order_id))
         ).scalar_one()
         assert state == "allocated"
+
+        qty_reserved = (
+            await conn.execute(
+                select(stock.c.qty_reserved).where(
+                    (stock.c.sku_id == "S") & (stock.c.location_id == "L1")
+                )
+            )
+        ).scalar_one()
+        assert qty_reserved == 5
+
+        movement_rows = (
+            await conn.execute(
+                select(movement.c.type, movement.c.qty, movement.c.ref).where(
+                    movement.c.sku_id == "S"
+                )
+            )
+        ).all()
+        assert len(movement_rows) == 1
+        assert movement_rows[0].type == "reserve"
+        assert movement_rows[0].qty == 5
+        assert movement_rows[0].ref == order_id
+
+        key_status = (
+            await conn.execute(
+                select(idempotency_key.c.status).where(idempotency_key.c.key == "k1")
+            )
+        ).scalar_one()
+        assert key_status == "succeeded"
+
     await assert_invariants(committed_db, sku)
 
 
