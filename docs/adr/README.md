@@ -24,6 +24,7 @@ The format follows Michael Nygard's
 - [0013 — Entity identity typing: NewType over primitives, natural codes, UUID document IDs](0013-entity-identity-typing.md)
 - [0014 — Postgres-early testing with testcontainers](0014-postgres-early-testcontainers.md)
 - [0015 — UUIDv7 for document identifiers, generated app-side](0015-uuidv7-document-ids.md)
+- [0016 — Atomic partial-reserve primitive for greedy allocation](0016-atomic-partial-reserve-primitive.md)
 
 ## Adding a record
 
