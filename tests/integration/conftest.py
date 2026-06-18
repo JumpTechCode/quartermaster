@@ -19,6 +19,7 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from testcontainers.postgres import PostgresContainer
 
@@ -69,3 +70,27 @@ async def db(engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
             yield conn
         finally:
             await trans.rollback()
+
+
+_ALL_TABLES = (
+    "movement",
+    "reservation",
+    "order_line",
+    "orders",
+    "receipt_line",
+    "receipt",
+    "stock",
+    "idempotency_key",
+    "sku",
+    "location",
+)
+
+
+@pytest_asyncio.fixture
+async def committed_db(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
+    """Engine for command-path tests that COMMIT; truncates all tables on teardown."""
+    try:
+        yield engine
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text(f"TRUNCATE {', '.join(_ALL_TABLES)} RESTART IDENTITY CASCADE"))
