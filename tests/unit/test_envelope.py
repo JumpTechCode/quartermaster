@@ -153,3 +153,39 @@ async def test_replay_of_cached_rejection_reraises() -> None:
 
     with pytest.raises(IllegalTransition):
         await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)
+
+
+async def test_unknown_sku_is_a_cached_hard_rejection() -> None:
+    from quartermaster.domain.errors import UnknownSku
+
+    idempotency = FakeIdempotencyRepo()
+    uow = FakeUnitOfWork(idempotency=idempotency)
+
+    async def handler(u: UnitOfWork, c: FakeCommand) -> FakeResult:
+        raise UnknownSku("sku WIDGET-9 does not exist")
+
+    with pytest.raises(UnknownSku):
+        await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)
+
+    assert uow.commits == 1 and uow.rollbacks == 0
+    ((_key, status, response),) = idempotency.finalize_calls
+    assert status is IdempotencyStatus.REJECTED
+    assert response == {"error": "UnknownSku", "detail": "sku WIDGET-9 does not exist"}
+
+
+async def test_unknown_sku_replay_reraises() -> None:
+    from quartermaster.domain.errors import UnknownSku
+
+    stored = StoredResponse(
+        command_fingerprint="fp",
+        status=IdempotencyStatus.REJECTED,
+        response={"error": "UnknownSku", "detail": "sku WIDGET-9 does not exist"},
+    )
+    idempotency = FakeIdempotencyRepo(claim_outcome=ClaimOutcome.EXISTS, stored=stored)
+    uow = FakeUnitOfWork(idempotency=idempotency)
+
+    async def handler(u: UnitOfWork, c: FakeCommand) -> FakeResult:
+        raise AssertionError("handler must not run on replay")
+
+    with pytest.raises(UnknownSku):
+        await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)

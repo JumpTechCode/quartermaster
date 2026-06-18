@@ -20,6 +20,7 @@ from quartermaster.domain.errors import (
     IllegalTransition,
     InsufficientStock,
     OrderNotFound,
+    UnknownSku,
 )
 from quartermaster.domain.idempotency import IdempotencyStatus
 from quartermaster.domain.ids import IdempotencyKey
@@ -29,6 +30,7 @@ MAX_OCC_RETRIES = 5
 _REJECTION_TYPES: dict[str, type[Exception]] = {
     "IllegalTransition": IllegalTransition,
     "OrderNotFound": OrderNotFound,
+    "UnknownSku": UnknownSku,
 }
 
 
@@ -39,7 +41,7 @@ def _rejection_error(response: dict[str, Any] | None) -> Exception:
 
 
 # ADR-0004 classification of handler-raised domain errors.
-HARD_REJECTION: tuple[type[Exception], ...] = (IllegalTransition, OrderNotFound)
+HARD_REJECTION: tuple[type[Exception], ...] = (IllegalTransition, OrderNotFound, UnknownSku)
 TRANSIENT: tuple[type[Exception], ...] = (InsufficientStock,)
 
 

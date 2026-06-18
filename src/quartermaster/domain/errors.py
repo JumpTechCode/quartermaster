@@ -30,3 +30,7 @@ class IdempotencyKeyReuse(QuartermasterError):
 
 class OrderNotFound(QuartermasterError):
     """A command referenced an order that does not exist (a hard rejection)."""
+
+
+class UnknownSku(QuartermasterError):
+    """A create_order line referenced a SKU absent from the catalog (a hard rejection)."""
