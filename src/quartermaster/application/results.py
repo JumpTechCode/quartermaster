@@ -51,3 +51,37 @@ class AllocateResult:
             ),
             reservation_ids=tuple(ReservationId(UUID(rid)) for rid in data["reservation_ids"]),
         )
+
+
+@dataclass(frozen=True)
+class CreatedLine:
+    """One line of a newly created order: its ordered quantity."""
+
+    sku_id: SkuId
+    ordered: int
+
+
+@dataclass(frozen=True)
+class CreateOrderResult:
+    """The outcome of a ``create_order``: the new order id, state, and lines."""
+
+    order_id: OrderId
+    state: OrderState
+    lines: tuple[CreatedLine, ...]
+
+    def to_response(self) -> dict[str, Any]:
+        return {
+            "order_id": str(self.order_id),
+            "state": self.state.value,
+            "lines": [{"sku_id": line.sku_id, "ordered": line.ordered} for line in self.lines],
+        }
+
+    @classmethod
+    def decode(cls, data: dict[str, Any]) -> CreateOrderResult:
+        return cls(
+            order_id=OrderId(UUID(data["order_id"])),
+            state=OrderState(data["state"]),
+            lines=tuple(
+                CreatedLine(SkuId(line["sku_id"]), int(line["ordered"])) for line in data["lines"]
+            ),
+        )

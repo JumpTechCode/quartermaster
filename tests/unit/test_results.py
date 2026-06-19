@@ -26,3 +26,18 @@ def test_response_is_json_safe() -> None:
     encoded = RESULT.to_response()
     assert json.loads(json.dumps(encoded)) == encoded
     assert encoded["state"] == "backordered"
+
+
+def test_create_order_result_roundtrip() -> None:
+    from uuid import UUID
+
+    from quartermaster.application.results import CreatedLine, CreateOrderResult
+    from quartermaster.domain.ids import OrderId, SkuId
+    from quartermaster.domain.state_machines import OrderState
+
+    result = CreateOrderResult(
+        order_id=OrderId(UUID("00000000-0000-7000-8000-000000000001")),
+        state=OrderState.CREATED,
+        lines=(CreatedLine(SkuId("A"), 5), CreatedLine(SkuId("B"), 2)),
+    )
+    assert CreateOrderResult.decode(result.to_response()) == result
