@@ -86,8 +86,6 @@ async def test_create_order_replay_is_one_order(committed_db: AsyncEngine) -> No
     assert first == second
     async with committed_db.connect() as conn:
         rows = (
-            await conn.execute(
-                select(orders.c.order_id).where(orders.c.order_id == first.order_id)
-            )
+            await conn.execute(select(orders.c.order_id).where(orders.c.order_id == first.order_id))
         ).all()
     assert len(rows) == 1
