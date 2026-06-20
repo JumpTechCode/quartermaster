@@ -97,6 +97,18 @@ class PgStockRepo:
         )
         return result.rowcount == 1
 
+    async def release(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        result = await self._conn.execute(
+            stock.update()
+            .where(
+                stock.c.sku_id == sku,
+                stock.c.location_id == location,
+                stock.c.qty_reserved >= qty,
+            )
+            .values(qty_reserved=stock.c.qty_reserved - qty)
+        )
+        return result.rowcount == 1
+
 
 class PgOrderRepo:
     def __init__(self, conn: AsyncConnection) -> None:
@@ -172,6 +184,18 @@ class PgOrderRepo:
                 order_line.c.picked_qty + qty <= order_line.c.allocated_qty,
             )
             .values(picked_qty=order_line.c.picked_qty + qty)
+        )
+        return result.rowcount == 1
+
+    async def add_shipped(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        result = await self._conn.execute(
+            order_line.update()
+            .where(
+                order_line.c.order_id == order_id,
+                order_line.c.sku_id == sku_id,
+                order_line.c.shipped_qty + qty <= order_line.c.picked_qty,
+            )
+            .values(shipped_qty=order_line.c.shipped_qty + qty)
         )
         return result.rowcount == 1
 

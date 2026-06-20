@@ -70,6 +70,9 @@ class _NoopStockRepo:
     async def consume(self, sku: SkuId, location: LocationId, qty: int) -> bool:  # pragma: no cover
         return True
 
+    async def release(self, sku: SkuId, location: LocationId, qty: int) -> bool:  # pragma: no cover
+        return True
+
 
 class _BoomOrderRepo:
     """An OrderRepo stub whose every method raises an unmapped RuntimeError."""
@@ -95,6 +98,11 @@ class _BoomOrderRepo:
         raise RuntimeError("database on fire")
 
     async def add_picked(
+        self, order_id: OrderId, sku_id: SkuId, qty: int
+    ) -> bool:  # pragma: no cover
+        raise RuntimeError("database on fire")
+
+    async def add_shipped(
         self, order_id: OrderId, sku_id: SkuId, qty: int
     ) -> bool:  # pragma: no cover
         raise RuntimeError("database on fire")
