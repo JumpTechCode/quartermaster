@@ -53,6 +53,7 @@ from quartermaster.domain.state_machines import OrderState, ReceiptState, Reserv
 _OID = OrderId(UUID("00000000-0000-7000-8000-000000000001"))
 _RID = ReservationId(UUID("00000000-0000-7000-8000-000000000002"))
 _MID = MovementId(UUID("00000000-0000-7000-8000-000000000003"))
+_RCID = ReceiptId(UUID("00000000-0000-7000-8000-000000000004"))
 _FIXED = datetime.datetime(2026, 6, 18, tzinfo=datetime.UTC)
 
 
@@ -239,6 +240,7 @@ def _boom_client() -> httpx.AsyncClient:
         uow_factory=_boom_uow_factory(),
         now=lambda: _FIXED,
         new_order_id=lambda: _OID,
+        new_receipt_id=lambda: _RCID,
         new_reservation_id=lambda: _RID,
         new_movement_id=lambda: _MID,
     )

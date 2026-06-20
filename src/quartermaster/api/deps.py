@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from quartermaster.application.clock import Clock
 from quartermaster.application.ports import UnitOfWorkFactory
-from quartermaster.domain.ids import MovementId, OrderId, ReservationId
+from quartermaster.domain.ids import MovementId, OrderId, ReceiptId, ReservationId
 
 
 @dataclass(frozen=True)
@@ -17,5 +17,6 @@ class Deps:
     uow_factory: UnitOfWorkFactory
     now: Clock
     new_order_id: Callable[[], OrderId]
+    new_receipt_id: Callable[[], ReceiptId]
     new_reservation_id: Callable[[], ReservationId]
     new_movement_id: Callable[[], MovementId]

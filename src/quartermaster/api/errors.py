@@ -18,7 +18,10 @@ from quartermaster.domain.errors import (
     IdempotencyKeyReuse,
     IllegalTransition,
     InsufficientStock,
+    InvalidReceiptLine,
     OrderNotFound,
+    ReceiptNotFound,
+    UnknownLocation,
     UnknownSku,
 )
 
@@ -31,7 +34,10 @@ class MissingIdempotencyKey(Exception):
 _STATUS_MAP: tuple[tuple[type[Exception], int, str], ...] = (
     (MissingIdempotencyKey, 400, "missing_idempotency_key"),
     (UnknownSku, 422, "unknown_sku"),
+    (UnknownLocation, 422, "unknown_location"),
+    (InvalidReceiptLine, 422, "invalid_receipt_line"),
     (OrderNotFound, 404, "order_not_found"),
+    (ReceiptNotFound, 404, "receipt_not_found"),
     (IllegalTransition, 409, "illegal_transition"),
     (IdempotencyKeyReuse, 409, "idempotency_key_reuse"),
     (InsufficientStock, 409, "insufficient_stock"),
