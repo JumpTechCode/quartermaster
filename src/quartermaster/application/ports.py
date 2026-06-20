@@ -47,7 +47,7 @@ class StoredResponse:
 
 class StockRepo(Protocol):
     async def stock_locations(self, sku: SkuId) -> list[tuple[LocationId, int]]:
-        """Pickable (shelf-kind) locations holding the SKU with available > 0, ordered by location_id.
+        """Shelf (pickable) locations holding the SKU with available > 0, ordered by location_id.
 
         Allocation reserves only from shelves; receiving/staging/dock cells are
         excluded so unputaway stock at the dock is never reserved (design spec §3).
