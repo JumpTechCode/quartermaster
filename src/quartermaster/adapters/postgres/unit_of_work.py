@@ -37,12 +37,13 @@ from quartermaster.domain.ids import (
     IdempotencyKey,
     LocationId,
     OrderId,
+    ReservationId,
     SkuId,
 )
 from quartermaster.domain.movements import Movement
 from quartermaster.domain.orders import Order, OrderLine
 from quartermaster.domain.reservations import Reservation
-from quartermaster.domain.state_machines import OrderState
+from quartermaster.domain.state_machines import OrderState, ReservationState
 
 _RESERVE_UP_TO = text(
     """
@@ -80,6 +81,21 @@ class PgStockRepo:
             await self._conn.execute(_RESERVE_UP_TO, {"want": want, "sku": sku, "loc": location})
         ).first()
         return int(row.take) if row is not None else 0
+
+    async def consume(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        result = await self._conn.execute(
+            stock.update()
+            .where(
+                stock.c.sku_id == sku,
+                stock.c.location_id == location,
+                stock.c.qty_reserved >= qty,
+            )
+            .values(
+                qty_on_hand=stock.c.qty_on_hand - qty,
+                qty_reserved=stock.c.qty_reserved - qty,
+            )
+        )
+        return result.rowcount == 1
 
 
 class PgOrderRepo:
@@ -147,6 +163,18 @@ class PgOrderRepo:
         )
         return result.rowcount == 1
 
+    async def add_picked(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        result = await self._conn.execute(
+            order_line.update()
+            .where(
+                order_line.c.order_id == order_id,
+                order_line.c.sku_id == sku_id,
+                order_line.c.picked_qty + qty <= order_line.c.allocated_qty,
+            )
+            .values(picked_qty=order_line.c.picked_qty + qty)
+        )
+        return result.rowcount == 1
+
     async def insert_order(self, order: Order, lines: Sequence[OrderLine]) -> None:
         await self._conn.execute(
             orders.insert().values(
@@ -197,6 +225,41 @@ class PgReservationRepo:
                 expires_at=res.expires_at,
             )
         )
+
+    async def held_for_order(self, order_id: OrderId) -> list[Reservation]:
+        rows = await self._conn.execute(
+            select(reservation)
+            .where(
+                reservation.c.order_id == order_id,
+                reservation.c.state == ReservationState.HELD.value,
+            )
+            .order_by(reservation.c.sku_id, reservation.c.location_id)
+        )
+        return [
+            Reservation(
+                reservation_id=ReservationId(r.reservation_id),
+                order_id=OrderId(r.order_id),
+                sku_id=SkuId(r.sku_id),
+                location_id=LocationId(r.location_id),
+                qty=int(r.qty),
+                state=ReservationState(r.state),
+                expires_at=r.expires_at,
+            )
+            for r in rows
+        ]
+
+    async def transition(
+        self, reservation_id: ReservationId, expected: ReservationState, new: ReservationState
+    ) -> bool:
+        result = await self._conn.execute(
+            reservation.update()
+            .where(
+                reservation.c.reservation_id == reservation_id,
+                reservation.c.state == expected.value,
+            )
+            .values(state=new.value)
+        )
+        return result.rowcount == 1
 
 
 class PgMovementRepo:

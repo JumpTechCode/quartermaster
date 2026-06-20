@@ -85,3 +85,37 @@ class CreateOrderResult:
                 CreatedLine(SkuId(line["sku_id"]), int(line["ordered"])) for line in data["lines"]
             ),
         )
+
+
+@dataclass(frozen=True)
+class PickedLine:
+    """How much of one line was picked (consumed from its reservations)."""
+
+    sku_id: SkuId
+    picked: int
+
+
+@dataclass(frozen=True)
+class PickResult:
+    """The outcome of a ``pick``: the order is ``picked`` and what was consumed."""
+
+    order_id: OrderId
+    state: OrderState
+    lines: tuple[PickedLine, ...]
+
+    def to_response(self) -> dict[str, Any]:
+        return {
+            "order_id": str(self.order_id),
+            "state": self.state.value,
+            "lines": [{"sku_id": line.sku_id, "picked": line.picked} for line in self.lines],
+        }
+
+    @classmethod
+    def decode(cls, data: dict[str, Any]) -> PickResult:
+        return cls(
+            order_id=OrderId(UUID(data["order_id"])),
+            state=OrderState(data["state"]),
+            lines=tuple(
+                PickedLine(SkuId(line["sku_id"]), int(line["picked"])) for line in data["lines"]
+            ),
+        )

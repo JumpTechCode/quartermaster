@@ -28,12 +28,13 @@ from quartermaster.domain.ids import (
     IdempotencyKey,
     LocationId,
     OrderId,
+    ReservationId,
     SkuId,
 )
 from quartermaster.domain.movements import Movement
 from quartermaster.domain.orders import Order, OrderLine
 from quartermaster.domain.reservations import Reservation
-from quartermaster.domain.state_machines import OrderState
+from quartermaster.domain.state_machines import OrderState, ReservationState
 
 
 class FakeStockRepo:
@@ -41,6 +42,8 @@ class FakeStockRepo:
         # cells maps (sku, location) -> available units
         self.cells = cells or {}
         self.reserve_calls: list[tuple[SkuId, LocationId, int]] = []
+        self.consume_result = True
+        self.consume_calls: list[tuple[SkuId, LocationId, int]] = []
 
     async def stock_locations(self, sku: SkuId) -> list[tuple[LocationId, int]]:
         locs = [(loc, avail) for (s, loc), avail in self.cells.items() if s == sku and avail > 0]
@@ -53,6 +56,10 @@ class FakeStockRepo:
         self.cells[(sku, location)] = avail - take
         return take
 
+    async def consume(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        self.consume_calls.append((sku, location, qty))
+        return self.consume_result
+
 
 class FakeOrderRepo:
     def __init__(
@@ -62,13 +69,16 @@ class FakeOrderRepo:
         cas_result: bool = True,
         *,
         add_allocated_result: bool = True,
+        add_picked_result: bool = True,
     ) -> None:
         self.order = order
         self.lines = lines or []
         self.cas_result = cas_result
         self.add_allocated_result = add_allocated_result
+        self.add_picked_result = add_picked_result
         self.cas_calls: list[tuple[OrderId, OrderState, int, OrderState]] = []
         self.allocated: list[tuple[OrderId, SkuId, int]] = []
+        self.picked: list[tuple[OrderId, SkuId, int]] = []
         self.inserted: list[tuple[Order, list[OrderLine]]] = []
 
     async def get(self, order_id: OrderId) -> Order | None:
@@ -91,16 +101,37 @@ class FakeOrderRepo:
         self.allocated.append((order_id, sku_id, qty))
         return self.add_allocated_result
 
+    async def add_picked(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        self.picked.append((order_id, sku_id, qty))
+        return self.add_picked_result
+
     async def insert_order(self, order: Order, lines: Sequence[OrderLine]) -> None:
         self.inserted.append((order, list(lines)))
 
 
 class FakeReservationRepo:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        held: list[Reservation] | None = None,
+        *,
+        transition_result: bool = True,
+    ) -> None:
         self.added: list[Reservation] = []
+        self.held = held or []
+        self.transition_result = transition_result
+        self.transitions: list[tuple[ReservationId, ReservationState, ReservationState]] = []
 
     async def add(self, reservation: Reservation) -> None:
         self.added.append(reservation)
+
+    async def held_for_order(self, order_id: OrderId) -> list[Reservation]:
+        return list(self.held)
+
+    async def transition(
+        self, reservation_id: ReservationId, expected: ReservationState, new: ReservationState
+    ) -> bool:
+        self.transitions.append((reservation_id, expected, new))
+        return self.transition_result
 
 
 class FakeMovementRepo:

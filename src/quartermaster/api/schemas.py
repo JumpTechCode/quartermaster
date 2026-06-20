@@ -67,6 +67,17 @@ class OrderResponse(BaseModel):
     lines: list[OrderLineView]
 
 
+class PickedLineOut(BaseModel):
+    sku_id: str
+    picked: int
+
+
+class PickResponse(BaseModel):
+    order_id: UUID
+    state: str
+    lines: list[PickedLineOut]
+
+
 class ErrorResponse(BaseModel):
     error: str
     detail: str

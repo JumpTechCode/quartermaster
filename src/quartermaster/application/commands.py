@@ -44,3 +44,14 @@ class CreateOrderCommand:
             key=lambda pair: pair[0],
         )
         return _fingerprint({"command": "create_order", "lines": sorted_lines})
+
+
+@dataclass(frozen=True)
+class PickCommand:
+    """Consume an allocated order's reservations and advance it to ``picked``."""
+
+    order_id: OrderId
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        return _fingerprint({"command": "pick", "order_id": str(self.order_id)})

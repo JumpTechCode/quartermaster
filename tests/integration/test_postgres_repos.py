@@ -8,13 +8,20 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from quartermaster.adapters.postgres.identifiers import new_order_id
-from quartermaster.adapters.postgres.tables import location, orders, sku, stock
+from quartermaster.adapters.postgres.identifiers import new_order_id, new_reservation_id
+from quartermaster.adapters.postgres.tables import (
+    location,
+    order_line,
+    orders,
+    reservation,
+    sku,
+    stock,
+)
 from quartermaster.adapters.postgres.unit_of_work import PostgresUnitOfWork
 from quartermaster.application.ports import ClaimOutcome
 from quartermaster.domain.idempotency import IdempotencyStatus
 from quartermaster.domain.ids import IdempotencyKey, LocationId, SkuId
-from quartermaster.domain.state_machines import OrderState
+from quartermaster.domain.state_machines import OrderState, ReservationState
 
 
 async def _seed_two_cells(engine: AsyncEngine, on_hand: int) -> SkuId:
@@ -99,4 +106,153 @@ async def test_rollback_discards_writes(committed_db: AsyncEngine) -> None:
         await uow.rollback()
     async with PostgresUnitOfWork(committed_db) as uow:
         assert await uow.idempotency.load(key) is None  # claim was rolled back
+        await uow.commit()
+
+
+async def test_consume_decrements_on_hand_and_reserved_guarded(committed_db: AsyncEngine) -> None:
+    sku_id = await _seed_two_cells(committed_db, on_hand=5)
+    async with PostgresUnitOfWork(committed_db) as uow:
+        await uow.stock.reserve_up_to(sku_id, LocationId("L1"), 3)  # reserved 3 of 5
+        assert await uow.stock.consume(sku_id, LocationId("L1"), 3) is True
+        assert await uow.stock.consume(sku_id, LocationId("L1"), 1) is False  # reserved now 0
+        await uow.commit()
+    async with committed_db.connect() as conn:
+        row = (
+            await conn.execute(
+                select(stock.c.qty_on_hand, stock.c.qty_reserved).where(stock.c.location_id == "L1")
+            )
+        ).one()
+    assert (row.qty_on_hand, row.qty_reserved) == (2, 0)  # 5-3 on hand, reservation consumed
+
+
+async def test_add_picked_is_guarded_by_allocated(committed_db: AsyncEngine) -> None:
+    order_id = new_order_id()
+    async with committed_db.begin() as conn:
+        await conn.execute(sku.insert().values(sku_id="S", description="w", unit="each"))
+        await conn.execute(
+            orders.insert().values(
+                order_id=order_id, state="allocated", version=2, created_at=datetime.now(UTC)
+            )
+        )
+        await conn.execute(
+            order_line.insert().values(
+                order_id=order_id,
+                sku_id="S",
+                ordered_qty=5,
+                allocated_qty=5,
+                picked_qty=0,
+                shipped_qty=0,
+            )
+        )
+    async with PostgresUnitOfWork(committed_db) as uow:
+        assert await uow.orders.add_picked(order_id, SkuId("S"), 5) is True
+        assert (
+            await uow.orders.add_picked(order_id, SkuId("S"), 1) is False
+        )  # would exceed allocated
+        await uow.commit()
+    async with committed_db.connect() as conn:
+        picked = (
+            await conn.execute(
+                select(order_line.c.picked_qty).where(order_line.c.order_id == order_id)
+            )
+        ).scalar_one()
+    assert picked == 5
+
+
+async def test_held_for_order_filters_and_orders(committed_db: AsyncEngine) -> None:
+    order_id = new_order_id()
+    async with committed_db.begin() as conn:
+        await conn.execute(sku.insert().values(sku_id="S", description="w", unit="each"))
+        await conn.execute(location.insert().values(location_id="L1", kind="shelf"))
+        await conn.execute(location.insert().values(location_id="L2", kind="shelf"))
+        await conn.execute(
+            stock.insert().values(sku_id="S", location_id="L1", qty_on_hand=3, qty_reserved=1)
+        )
+        await conn.execute(
+            stock.insert().values(sku_id="S", location_id="L2", qty_on_hand=3, qty_reserved=2)
+        )
+        await conn.execute(
+            orders.insert().values(
+                order_id=order_id, state="allocated", version=2, created_at=datetime.now(UTC)
+            )
+        )
+        # two held reservations at different locations + one released (must be filtered out)
+        await conn.execute(
+            reservation.insert().values(
+                reservation_id=new_reservation_id(),
+                order_id=order_id,
+                sku_id="S",
+                location_id="L2",
+                qty=2,
+                state="held",
+                expires_at=datetime.now(UTC),
+            )
+        )
+        await conn.execute(
+            reservation.insert().values(
+                reservation_id=new_reservation_id(),
+                order_id=order_id,
+                sku_id="S",
+                location_id="L1",
+                qty=1,
+                state="held",
+                expires_at=datetime.now(UTC),
+            )
+        )
+        await conn.execute(
+            reservation.insert().values(
+                reservation_id=new_reservation_id(),
+                order_id=order_id,
+                sku_id="S",
+                location_id="L1",
+                qty=1,
+                state="released",
+                expires_at=datetime.now(UTC),
+            )
+        )
+    async with PostgresUnitOfWork(committed_db) as uow:
+        rows = await uow.reservations.held_for_order(order_id)
+        await uow.commit()
+    # held only, ordered by (sku_id, location_id): L1 before L2; released excluded
+    assert [(r.location_id, r.qty, r.state.value) for r in rows] == [
+        (LocationId("L1"), 1, "held"),
+        (LocationId("L2"), 2, "held"),
+    ]
+
+
+async def test_transition_is_a_state_cas(committed_db: AsyncEngine) -> None:
+    order_id = new_order_id()
+    rid = new_reservation_id()
+    async with committed_db.begin() as conn:
+        await conn.execute(sku.insert().values(sku_id="S", description="w", unit="each"))
+        await conn.execute(location.insert().values(location_id="L1", kind="shelf"))
+        await conn.execute(
+            orders.insert().values(
+                order_id=order_id, state="allocated", version=2, created_at=datetime.now(UTC)
+            )
+        )
+        await conn.execute(
+            stock.insert().values(sku_id="S", location_id="L1", qty_on_hand=1, qty_reserved=1)
+        )
+        await conn.execute(
+            reservation.insert().values(
+                reservation_id=rid,
+                order_id=order_id,
+                sku_id="S",
+                location_id="L1",
+                qty=1,
+                state="held",
+                expires_at=datetime.now(UTC),
+            )
+        )
+    async with PostgresUnitOfWork(committed_db) as uow:
+        assert (
+            await uow.reservations.transition(rid, ReservationState.HELD, ReservationState.CONSUMED)
+            is True
+        )
+        # second attempt loses: state is no longer 'held'
+        assert (
+            await uow.reservations.transition(rid, ReservationState.HELD, ReservationState.CONSUMED)
+            is False
+        )
         await uow.commit()

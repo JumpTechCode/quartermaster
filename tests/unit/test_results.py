@@ -59,3 +59,36 @@ def test_create_order_result_response_is_json_safe() -> None:
     encoded = result.to_response()
     assert json.loads(json.dumps(encoded)) == encoded
     assert encoded["state"] == "created"
+
+
+def test_pick_result_roundtrip() -> None:
+    from uuid import UUID
+
+    from quartermaster.application.results import PickedLine, PickResult
+    from quartermaster.domain.ids import OrderId, SkuId
+    from quartermaster.domain.state_machines import OrderState
+
+    result = PickResult(
+        order_id=OrderId(UUID("00000000-0000-7000-8000-000000000001")),
+        state=OrderState.PICKED,
+        lines=(PickedLine(SkuId("A"), 5), PickedLine(SkuId("B"), 2)),
+    )
+    assert PickResult.decode(result.to_response()) == result
+
+
+def test_pick_result_response_is_json_safe() -> None:
+    import json
+    from uuid import UUID
+
+    from quartermaster.application.results import PickedLine, PickResult
+    from quartermaster.domain.ids import OrderId, SkuId
+    from quartermaster.domain.state_machines import OrderState
+
+    result = PickResult(
+        order_id=OrderId(UUID("00000000-0000-7000-8000-000000000001")),
+        state=OrderState.PICKED,
+        lines=(PickedLine(SkuId("A"), 5),),
+    )
+    encoded = result.to_response()
+    assert json.loads(json.dumps(encoded)) == encoded
+    assert encoded["state"] == "picked"

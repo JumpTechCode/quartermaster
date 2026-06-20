@@ -45,7 +45,7 @@ from quartermaster.domain.ids import (
 from quartermaster.domain.movements import Movement
 from quartermaster.domain.orders import Order, OrderLine
 from quartermaster.domain.reservations import Reservation
-from quartermaster.domain.state_machines import OrderState
+from quartermaster.domain.state_machines import OrderState, ReservationState
 
 _OID = OrderId(UUID("00000000-0000-7000-8000-000000000001"))
 _RID = ReservationId(UUID("00000000-0000-7000-8000-000000000002"))
@@ -66,6 +66,9 @@ class _NoopStockRepo:
         self, sku: SkuId, location: LocationId, want: int
     ) -> int:  # pragma: no cover
         return 0
+
+    async def consume(self, sku: SkuId, location: LocationId, qty: int) -> bool:  # pragma: no cover
+        return True
 
 
 class _BoomOrderRepo:
@@ -91,6 +94,11 @@ class _BoomOrderRepo:
     ) -> bool:  # pragma: no cover
         raise RuntimeError("database on fire")
 
+    async def add_picked(
+        self, order_id: OrderId, sku_id: SkuId, qty: int
+    ) -> bool:  # pragma: no cover
+        raise RuntimeError("database on fire")
+
     async def insert_order(
         self, order: Order, lines: Sequence[OrderLine]
     ) -> None:  # pragma: no cover
@@ -100,6 +108,17 @@ class _BoomOrderRepo:
 class _NoopReservationRepo:
     async def add(self, reservation: Reservation) -> None:  # pragma: no cover
         pass
+
+    async def held_for_order(self, order_id: OrderId) -> list[Reservation]:  # pragma: no cover
+        return []
+
+    async def transition(
+        self,
+        reservation_id: ReservationId,
+        expected: ReservationState,
+        new: ReservationState,
+    ) -> bool:  # pragma: no cover
+        return True
 
 
 class _NoopMovementRepo:

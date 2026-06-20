@@ -18,12 +18,13 @@ from quartermaster.domain.ids import (
     IdempotencyKey,
     LocationId,
     OrderId,
+    ReservationId,
     SkuId,
 )
 from quartermaster.domain.movements import Movement
 from quartermaster.domain.orders import Order, OrderLine
 from quartermaster.domain.reservations import Reservation
-from quartermaster.domain.state_machines import OrderState
+from quartermaster.domain.state_machines import OrderState, ReservationState
 
 
 class ClaimOutcome(Enum):
@@ -51,6 +52,13 @@ class StockRepo(Protocol):
         """Atomically reserve min(want, available) at the cell; return the amount."""
         ...
 
+    async def consume(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        """Pick: ``on_hand -= qty, reserved -= qty`` guarded by ``reserved >= qty``.
+
+        Returns True if the row was updated, False if the guard rejected the write.
+        """
+        ...
+
 
 class OrderRepo(Protocol):
     async def get(self, order_id: OrderId) -> Order | None: ...
@@ -73,6 +81,14 @@ class OrderRepo(Protocol):
         """
         ...
 
+    async def add_picked(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        """Increment picked_qty by qty only if picked_qty + qty <= allocated_qty.
+
+        Returns True if the row was updated, False if the guard rejected the write
+        (an OCC conflict signal).
+        """
+        ...
+
     async def insert_order(self, order: Order, lines: Sequence[OrderLine]) -> None:
         """Insert a new order header and its lines (creation; no guard)."""
         ...
@@ -80,6 +96,16 @@ class OrderRepo(Protocol):
 
 class ReservationRepo(Protocol):
     async def add(self, reservation: Reservation) -> None: ...
+
+    async def held_for_order(self, order_id: OrderId) -> list[Reservation]:
+        """All ``held`` reservations for the order, ordered by (sku_id, location_id)."""
+        ...
+
+    async def transition(
+        self, reservation_id: ReservationId, expected: ReservationState, new: ReservationState
+    ) -> bool:
+        """CAS the reservation state; False == 0 rows == already finalized by another actor."""
+        ...
 
 
 class MovementRepo(Protocol):
