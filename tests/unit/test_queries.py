@@ -22,6 +22,7 @@ async def test_load_order_returns_view() -> None:
 
     view = await load_order(fake_factory(uow), _OID)
 
+    assert uow.commits == 0
     assert view is not None
     assert view.state is OrderState.BACKORDERED and view.version == 2
     assert view.lines == (line,)

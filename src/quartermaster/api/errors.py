@@ -59,8 +59,19 @@ async def _validation_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=422, content=_error_body("validation_error", str(exc)))
 
 
+async def _internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=500,
+        content=_error_body("internal_error", "an unexpected error occurred"),
+    )
+
+
 def register_error_handlers(app: FastAPI) -> None:
     """Attach the domain-error and validation-error handlers to ``app``."""
     for exc_type, status, code in _STATUS_MAP:
         app.add_exception_handler(exc_type, _make_handler(status, code))
     app.add_exception_handler(RequestValidationError, _validation_handler)
+    # Catch-all: unmapped exceptions become a uniform shaped 500.
+    # Starlette routes Exception-keyed handlers to ServerErrorMiddleware (the outermost
+    # layer), so specific domain handlers in ExceptionMiddleware still win for their types.
+    app.add_exception_handler(Exception, _internal_error_handler)

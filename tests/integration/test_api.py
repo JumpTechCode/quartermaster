@@ -66,10 +66,12 @@ async def test_backorder_path(committed_db: AsyncEngine) -> None:
             json={"lines": [{"sku_id": "A", "qty": 5}]},
             headers={"Idempotency-Key": "c1"},
         )
+        assert created.status_code == 201
         order_id = created.json()["order_id"]
         allocated = await client.post(
             f"/orders/{order_id}/allocate", headers={"Idempotency-Key": "a1"}
         )
+        assert allocated.status_code == 200
         assert allocated.json()["state"] == "backordered"
         read = await client.get(f"/orders/{order_id}")
         assert read.json()["lines"][0]["allocated"] == 2
@@ -89,6 +91,8 @@ async def test_http_allocate_replay_is_one_effect(committed_db: AsyncEngine) -> 
         second = await client.post(
             f"/orders/{order_id}/allocate", headers={"Idempotency-Key": "a1"}
         )
+    assert first.status_code == 200
+    assert second.status_code == 200
     assert first.json() == second.json()
     async with committed_db.connect() as conn:
         rows = (
