@@ -50,6 +50,8 @@ class FakeStockRepo:
         self.release_result = True
         self.release_calls: list[tuple[SkuId, LocationId, int]] = []
         self.received_calls: list[tuple[SkuId, LocationId, int]] = []
+        self.remove_result = True
+        self.remove_calls: list[tuple[SkuId, LocationId, int]] = []
 
     async def stock_locations(self, sku: SkuId) -> list[tuple[LocationId, int]]:
         locs = [(loc, avail) for (s, loc), avail in self.cells.items() if s == sku and avail > 0]
@@ -73,6 +75,10 @@ class FakeStockRepo:
     async def add_on_hand(self, sku: SkuId, location: LocationId, qty: int) -> None:
         self.received_calls.append((sku, location, qty))
         self.cells[(sku, location)] = self.cells.get((sku, location), 0) + qty
+
+    async def remove_on_hand(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        self.remove_calls.append((sku, location, qty))
+        return self.remove_result
 
 
 class FakeOrderRepo:

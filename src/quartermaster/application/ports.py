@@ -47,7 +47,11 @@ class StoredResponse:
 
 class StockRepo(Protocol):
     async def stock_locations(self, sku: SkuId) -> list[tuple[LocationId, int]]:
-        """Locations holding the SKU with available > 0, ordered by location_id."""
+        """Pickable (shelf-kind) locations holding the SKU with available > 0, ordered by location_id.
+
+        Allocation reserves only from shelves; receiving/staging/dock cells are
+        excluded so unputaway stock at the dock is never reserved (design spec §3).
+        """
         ...
 
     async def reserve_up_to(self, sku: SkuId, location: LocationId, want: int) -> int:
@@ -72,6 +76,14 @@ class StockRepo(Protocol):
         """Receive: ``qty_on_hand += qty`` at the cell, inserting it at reserved=0 if absent.
 
         Always succeeds — on-hand only grows on receipt; there is no availability guard.
+        """
+        ...
+
+    async def remove_on_hand(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        """Putaway source: ``qty_on_hand -= qty`` guarded by ``qty_on_hand - qty_reserved >= qty``.
+
+        Only unreserved on-hand can move, so a relocation can never drop on-hand below
+        reserved. Returns True if the row was updated, False if the guard rejected the write.
         """
         ...
 

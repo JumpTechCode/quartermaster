@@ -67,3 +67,14 @@ async def test_fake_catalog_location_exists() -> None:
     catalog = FakeCatalogRepo(known_locations={LocationId("L1")})
     assert await catalog.location_exists(LocationId("L1"))
     assert not await catalog.location_exists(LocationId("L2"))
+
+
+async def test_fake_stock_remove_on_hand_records_and_returns() -> None:
+    stock = FakeStockRepo()
+    assert await stock.remove_on_hand(SkuId("A"), LocationId("RCV"), 5) is True
+    stock.remove_result = False
+    assert await stock.remove_on_hand(SkuId("A"), LocationId("RCV"), 5) is False
+    assert stock.remove_calls == [
+        (SkuId("A"), LocationId("RCV"), 5),
+        (SkuId("A"), LocationId("RCV"), 5),
+    ]
