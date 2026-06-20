@@ -51,7 +51,11 @@ async def receive(
 
     lines_by_sku = {line.sku_id: line for line in await uow.receipts.get_lines(command.receipt_id)}
     # Pre-validate every provided line against the receipt before any write
-    # (deterministic hard rejections — cached by the envelope).
+    # (deterministic hard rejections — cached by the envelope). This check is
+    # advisory: the authoritative guard is add_received's in-gate WHERE
+    # (received_qty + qty <= expected_qty), which runs under the document CAS
+    # below where this receipt is single-writer. A stale pre-read that slipped a
+    # bad quantity through would simply fail that guard → InvariantViolation.
     for sku, qty in command.lines:
         line = lines_by_sku.get(sku)
         if line is None:

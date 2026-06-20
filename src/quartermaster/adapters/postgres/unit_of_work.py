@@ -124,6 +124,10 @@ class PgStockRepo:
         )
         stmt = stmt.on_conflict_do_update(
             index_elements=[stock.c.sku_id, stock.c.location_id],
+            # Increment the EXISTING committed row value, not excluded.qty_on_hand
+            # (the proposed insert). Under READ COMMITTED the ON CONFLICT path takes
+            # the row lock, so a concurrent receiver to the same cell blocks, re-reads
+            # the committed total, and adds — no lost update. Do not "simplify" to excluded.
             set_={"qty_on_hand": stock.c.qty_on_hand + qty},
         )
         await self._conn.execute(stmt)
