@@ -13,7 +13,7 @@ from quartermaster.adapters.postgres.identifiers import (
     new_receipt_id,
     new_reservation_id,
 )
-from quartermaster.adapters.postgres.tables import movement, orders, reservation, stock
+from quartermaster.adapters.postgres.tables import movement, receipt, reservation, stock
 from quartermaster.adapters.postgres.unit_of_work import postgres_uow_factory
 from quartermaster.application.clock import system_clock
 from quartermaster.application.handlers.allocate import run_allocate
@@ -26,7 +26,7 @@ from quartermaster.application.handlers.putaway import run_putaway
 from quartermaster.application.handlers.receive import run_receive
 from quartermaster.application.results import CreateReceiptResult, PutawayResult
 from quartermaster.domain.errors import IllegalTransition
-from quartermaster.domain.ids import IdempotencyKey, LocationId, OrderId, ReceiptId, SkuId
+from quartermaster.domain.ids import IdempotencyKey, LocationId, ReceiptId, SkuId
 from quartermaster.domain.movements import MovementType
 from quartermaster.domain.state_machines import OrderState, ReceiptState
 from tests.integration.seed import seed_location, seed_sku
@@ -214,8 +214,6 @@ async def test_cancel_from_arrived(committed_db: AsyncEngine) -> None:
     )
     assert result.state is ReceiptState.CANCELLED
     async with committed_db.connect() as conn:
-        from quartermaster.adapters.postgres.tables import receipt
-
         state = (
             await conn.execute(
                 select(receipt.c.state).where(receipt.c.receipt_id == created.receipt_id)
