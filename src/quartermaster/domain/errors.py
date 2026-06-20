@@ -34,3 +34,16 @@ class OrderNotFound(QuartermasterError):
 
 class UnknownSku(QuartermasterError):
     """A create_order line referenced a SKU absent from the catalog (a hard rejection)."""
+
+
+class ReceiptNotFound(QuartermasterError):
+    """A command referenced a receipt that does not exist (a hard rejection)."""
+
+
+class UnknownLocation(QuartermasterError):
+    """A receive named a location absent from the catalog (a hard rejection)."""
+
+
+class InvalidReceiptLine(QuartermasterError):
+    """A receive line is absent from the receipt or would exceed its expected
+    quantity (a hard rejection)."""
