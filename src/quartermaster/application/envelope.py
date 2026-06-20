@@ -19,7 +19,10 @@ from quartermaster.domain.errors import (
     IdempotencyKeyReuse,
     IllegalTransition,
     InsufficientStock,
+    InvalidReceiptLine,
     OrderNotFound,
+    ReceiptNotFound,
+    UnknownLocation,
     UnknownSku,
 )
 from quartermaster.domain.idempotency import IdempotencyStatus
@@ -31,6 +34,9 @@ _REJECTION_TYPES: dict[str, type[Exception]] = {
     "IllegalTransition": IllegalTransition,
     "OrderNotFound": OrderNotFound,
     "UnknownSku": UnknownSku,
+    "ReceiptNotFound": ReceiptNotFound,
+    "UnknownLocation": UnknownLocation,
+    "InvalidReceiptLine": InvalidReceiptLine,
 }
 
 
@@ -41,7 +47,14 @@ def _rejection_error(response: dict[str, Any] | None) -> Exception:
 
 
 # ADR-0004 classification of handler-raised domain errors.
-HARD_REJECTION: tuple[type[Exception], ...] = (IllegalTransition, OrderNotFound, UnknownSku)
+HARD_REJECTION: tuple[type[Exception], ...] = (
+    IllegalTransition,
+    OrderNotFound,
+    UnknownSku,
+    ReceiptNotFound,
+    UnknownLocation,
+    InvalidReceiptLine,
+)
 TRANSIENT: tuple[type[Exception], ...] = (InsufficientStock,)
 
 
@@ -70,7 +83,9 @@ async def execute[C: Command, R: Response](
                 stored = await uow.idempotency.load(command.key)
                 assert stored is not None  # claim said EXISTS, so the row is there
                 if stored.command_fingerprint != fingerprint:
-                    raise IdempotencyKeyReuse(command.key)
+                    raise IdempotencyKeyReuse(
+                        f"idempotency key {command.key!r} reused with a different command"
+                    )
                 if stored.status is IdempotencyStatus.REJECTED:
                     raise _rejection_error(stored.response)
                 assert stored.response is not None

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from quartermaster.adapters.postgres.identifiers import (
     new_movement_id,
     new_order_id,
+    new_receipt_id,
     new_reservation_id,
 )
 from quartermaster.adapters.postgres.tables import reservation
@@ -24,6 +25,7 @@ def _client(engine: AsyncEngine) -> httpx.AsyncClient:
         uow_factory=postgres_uow_factory(engine),
         now=system_clock,
         new_order_id=new_order_id,
+        new_receipt_id=new_receipt_id,
         new_reservation_id=new_reservation_id,
         new_movement_id=new_movement_id,
     )

@@ -17,6 +17,7 @@ from quartermaster.application.ports import (
     IdempotencyRepo,
     MovementRepo,
     OrderRepo,
+    ReceiptRepo,
     ReservationRepo,
     StockRepo,
     StoredResponse,
@@ -28,13 +29,15 @@ from quartermaster.domain.ids import (
     IdempotencyKey,
     LocationId,
     OrderId,
+    ReceiptId,
     ReservationId,
     SkuId,
 )
 from quartermaster.domain.movements import Movement
 from quartermaster.domain.orders import Order, OrderLine
+from quartermaster.domain.receipts import Receipt, ReceiptLine
 from quartermaster.domain.reservations import Reservation
-from quartermaster.domain.state_machines import OrderState, ReservationState
+from quartermaster.domain.state_machines import OrderState, ReceiptState, ReservationState
 
 
 class FakeStockRepo:
@@ -44,6 +47,9 @@ class FakeStockRepo:
         self.reserve_calls: list[tuple[SkuId, LocationId, int]] = []
         self.consume_result = True
         self.consume_calls: list[tuple[SkuId, LocationId, int]] = []
+        self.release_result = True
+        self.release_calls: list[tuple[SkuId, LocationId, int]] = []
+        self.received_calls: list[tuple[SkuId, LocationId, int]] = []
 
     async def stock_locations(self, sku: SkuId) -> list[tuple[LocationId, int]]:
         locs = [(loc, avail) for (s, loc), avail in self.cells.items() if s == sku and avail > 0]
@@ -60,6 +66,14 @@ class FakeStockRepo:
         self.consume_calls.append((sku, location, qty))
         return self.consume_result
 
+    async def release(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        self.release_calls.append((sku, location, qty))
+        return self.release_result
+
+    async def add_on_hand(self, sku: SkuId, location: LocationId, qty: int) -> None:
+        self.received_calls.append((sku, location, qty))
+        self.cells[(sku, location)] = self.cells.get((sku, location), 0) + qty
+
 
 class FakeOrderRepo:
     def __init__(
@@ -70,15 +84,18 @@ class FakeOrderRepo:
         *,
         add_allocated_result: bool = True,
         add_picked_result: bool = True,
+        add_shipped_result: bool = True,
     ) -> None:
         self.order = order
         self.lines = lines or []
         self.cas_result = cas_result
         self.add_allocated_result = add_allocated_result
         self.add_picked_result = add_picked_result
+        self.add_shipped_result = add_shipped_result
         self.cas_calls: list[tuple[OrderId, OrderState, int, OrderState]] = []
         self.allocated: list[tuple[OrderId, SkuId, int]] = []
         self.picked: list[tuple[OrderId, SkuId, int]] = []
+        self.shipped: list[tuple[OrderId, SkuId, int]] = []
         self.inserted: list[tuple[Order, list[OrderLine]]] = []
 
     async def get(self, order_id: OrderId) -> Order | None:
@@ -105,8 +122,53 @@ class FakeOrderRepo:
         self.picked.append((order_id, sku_id, qty))
         return self.add_picked_result
 
+    async def add_shipped(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        self.shipped.append((order_id, sku_id, qty))
+        return self.add_shipped_result
+
     async def insert_order(self, order: Order, lines: Sequence[OrderLine]) -> None:
         self.inserted.append((order, list(lines)))
+
+
+class FakeReceiptRepo:
+    def __init__(
+        self,
+        receipt: Receipt | None = None,
+        lines: list[ReceiptLine] | None = None,
+        *,
+        cas_result: bool = True,
+        add_received_result: bool = True,
+    ) -> None:
+        self.receipt = receipt
+        self.lines = lines or []
+        self.cas_result = cas_result
+        self.add_received_result = add_received_result
+        self.cas_calls: list[tuple[ReceiptId, ReceiptState, int, ReceiptState]] = []
+        self.received: list[tuple[ReceiptId, SkuId, int]] = []
+        self.inserted: list[tuple[Receipt, list[ReceiptLine]]] = []
+
+    async def get(self, receipt_id: ReceiptId) -> Receipt | None:
+        return self.receipt
+
+    async def get_lines(self, receipt_id: ReceiptId) -> list[ReceiptLine]:
+        return list(self.lines)
+
+    async def insert_receipt(self, receipt: Receipt, lines: Sequence[ReceiptLine]) -> None:
+        self.inserted.append((receipt, list(lines)))
+
+    async def cas_state(
+        self,
+        receipt_id: ReceiptId,
+        expected_state: ReceiptState,
+        expected_version: int,
+        new_state: ReceiptState,
+    ) -> bool:
+        self.cas_calls.append((receipt_id, expected_state, expected_version, new_state))
+        return self.cas_result
+
+    async def add_received(self, receipt_id: ReceiptId, sku_id: SkuId, qty: int) -> bool:
+        self.received.append((receipt_id, sku_id, qty))
+        return self.add_received_result
 
 
 class FakeReservationRepo:
@@ -143,11 +205,19 @@ class FakeMovementRepo:
 
 
 class FakeCatalogRepo:
-    def __init__(self, known: set[SkuId] | None = None) -> None:
+    def __init__(
+        self,
+        known: set[SkuId] | None = None,
+        known_locations: set[LocationId] | None = None,
+    ) -> None:
         self.known = known if known is not None else set()
+        self.known_locations = known_locations if known_locations is not None else set()
 
     async def missing_skus(self, skus: set[SkuId]) -> set[SkuId]:
         return skus - self.known
+
+    async def location_exists(self, location: LocationId) -> bool:
+        return location in self.known_locations
 
 
 class FakeIdempotencyRepo:
@@ -183,6 +253,7 @@ class FakeUnitOfWork:
         self,
         stock: FakeStockRepo | None = None,
         orders: FakeOrderRepo | None = None,
+        receipts: FakeReceiptRepo | None = None,
         reservations: FakeReservationRepo | None = None,
         movements: FakeMovementRepo | None = None,
         idempotency: FakeIdempotencyRepo | None = None,
@@ -190,6 +261,7 @@ class FakeUnitOfWork:
     ) -> None:
         self.stock: StockRepo = stock or FakeStockRepo()
         self.orders: OrderRepo = orders or FakeOrderRepo()
+        self.receipts: ReceiptRepo = receipts or FakeReceiptRepo()
         self.reservations: ReservationRepo = reservations or FakeReservationRepo()
         self.movements: MovementRepo = movements or FakeMovementRepo()
         self.idempotency: IdempotencyRepo = idempotency or FakeIdempotencyRepo()

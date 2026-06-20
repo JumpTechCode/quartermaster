@@ -17,12 +17,13 @@ from quartermaster.adapters.postgres.tables import (
     sku,
     stock,
 )
-from quartermaster.adapters.postgres.unit_of_work import PostgresUnitOfWork
+from quartermaster.adapters.postgres.unit_of_work import PostgresUnitOfWork, postgres_uow_factory
 from quartermaster.application.ports import ClaimOutcome
 from quartermaster.domain.idempotency import IdempotencyStatus
 from quartermaster.domain.ids import IdempotencyKey, LocationId, SkuId
 from quartermaster.domain.orders import Order, OrderLine
 from quartermaster.domain.state_machines import OrderState, ReservationState
+from tests.integration.seed import seed_location, seed_sku
 
 
 async def _seed_two_cells(engine: AsyncEngine, on_hand: int) -> SkuId:
@@ -219,6 +220,80 @@ async def test_held_for_order_filters_and_orders(committed_db: AsyncEngine) -> N
         (LocationId("L1"), 1, "held"),
         (LocationId("L2"), 2, "held"),
     ]
+
+
+async def test_add_on_hand_inserts_then_increments(committed_db: AsyncEngine) -> None:
+    await seed_sku(committed_db, "S")
+    await seed_location(committed_db, "RCV", "receiving")
+    factory = postgres_uow_factory(committed_db)
+    async with factory() as uow:
+        await uow.stock.add_on_hand(SkuId("S"), LocationId("RCV"), 3)
+        await uow.stock.add_on_hand(SkuId("S"), LocationId("RCV"), 2)
+        await uow.commit()
+    async with committed_db.connect() as conn:
+        cell = (
+            await conn.execute(
+                select(stock.c.qty_on_hand, stock.c.qty_reserved).where(stock.c.sku_id == "S")
+            )
+        ).one()
+    assert (cell.qty_on_hand, cell.qty_reserved) == (5, 0)
+
+
+async def test_location_exists(committed_db: AsyncEngine) -> None:
+    await seed_location(committed_db, "RCV", "receiving")
+    factory = postgres_uow_factory(committed_db)
+    async with factory() as uow:
+        assert await uow.catalog.location_exists(LocationId("RCV"))
+        assert not await uow.catalog.location_exists(LocationId("NOPE"))
+        await uow.commit()
+
+
+async def test_release_decrements_only_reserved_guarded(committed_db: AsyncEngine) -> None:
+    sku_id = await _seed_two_cells(committed_db, on_hand=5)
+    async with PostgresUnitOfWork(committed_db) as uow:
+        await uow.stock.reserve_up_to(sku_id, LocationId("L1"), 3)  # reserved 3 of 5
+        assert await uow.stock.release(sku_id, LocationId("L1"), 3) is True
+        assert await uow.stock.release(sku_id, LocationId("L1"), 1) is False  # reserved now 0
+        await uow.commit()
+    async with committed_db.connect() as conn:
+        row = (
+            await conn.execute(
+                select(stock.c.qty_on_hand, stock.c.qty_reserved).where(stock.c.location_id == "L1")
+            )
+        ).one()
+    assert (row.qty_on_hand, row.qty_reserved) == (5, 0)  # on_hand untouched, reservation released
+
+
+async def test_add_shipped_is_guarded_by_picked(committed_db: AsyncEngine) -> None:
+    order_id = new_order_id()
+    async with committed_db.begin() as conn:
+        await conn.execute(sku.insert().values(sku_id="S", description="w", unit="each"))
+        await conn.execute(
+            orders.insert().values(
+                order_id=order_id, state="packed", version=4, created_at=datetime.now(UTC)
+            )
+        )
+        await conn.execute(
+            order_line.insert().values(
+                order_id=order_id,
+                sku_id="S",
+                ordered_qty=5,
+                allocated_qty=5,
+                picked_qty=5,
+                shipped_qty=0,
+            )
+        )
+    async with PostgresUnitOfWork(committed_db) as uow:
+        assert await uow.orders.add_shipped(order_id, SkuId("S"), 5) is True
+        assert await uow.orders.add_shipped(order_id, SkuId("S"), 1) is False  # would exceed picked
+        await uow.commit()
+    async with committed_db.connect() as conn:
+        shipped = (
+            await conn.execute(
+                select(order_line.c.shipped_qty).where(order_line.c.order_id == order_id)
+            )
+        ).scalar_one()
+    assert shipped == 5
 
 
 async def test_transition_is_a_state_cas(committed_db: AsyncEngine) -> None:

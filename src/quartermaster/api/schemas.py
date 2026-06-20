@@ -18,7 +18,7 @@ class OrderLineInput(BaseModel):
 
 
 class CreateOrderRequest(BaseModel):
-    lines: list[OrderLineInput] = Field(min_length=1)
+    lines: list[OrderLineInput] = Field(min_length=1, max_length=100)
 
     @field_validator("lines")
     @classmethod
@@ -78,6 +78,100 @@ class PickResponse(BaseModel):
     lines: list[PickedLineOut]
 
 
+class PackResponse(BaseModel):
+    order_id: UUID
+    state: str
+
+
+class ShippedLineOut(BaseModel):
+    sku_id: str
+    shipped: int
+
+
+class ShipResponse(BaseModel):
+    order_id: UUID
+    state: str
+    lines: list[ShippedLineOut]
+
+
+class CancelResponse(BaseModel):
+    order_id: UUID
+    state: str
+    released_reservation_ids: list[UUID]
+
+
 class ErrorResponse(BaseModel):
     error: str
     detail: str
+
+
+class ReceiptLineInput(BaseModel):
+    sku_id: str = Field(min_length=1)
+    qty: int = Field(gt=0)
+
+
+class CreateReceiptRequest(BaseModel):
+    lines: list[ReceiptLineInput] = Field(min_length=1, max_length=100)
+
+    @field_validator("lines")
+    @classmethod
+    def _no_duplicate_skus(cls, lines: list[ReceiptLineInput]) -> list[ReceiptLineInput]:
+        skus = [line.sku_id for line in lines]
+        if len(set(skus)) != len(skus):
+            raise ValueError("duplicate sku_id in receipt lines")
+        return lines
+
+
+class ExpectedLineOut(BaseModel):
+    sku_id: str
+    expected: int
+
+
+class CreateReceiptResponse(BaseModel):
+    receipt_id: UUID
+    kind: str
+    state: str
+    lines: list[ExpectedLineOut]
+
+
+class ArriveResponse(BaseModel):
+    receipt_id: UUID
+    state: str
+
+
+class ReceiveRequest(BaseModel):
+    location_id: str = Field(min_length=1)
+    lines: list[ReceiptLineInput] = Field(min_length=1, max_length=100)
+
+    @field_validator("lines")
+    @classmethod
+    def _no_duplicate_skus(cls, lines: list[ReceiptLineInput]) -> list[ReceiptLineInput]:
+        skus = [line.sku_id for line in lines]
+        if len(set(skus)) != len(skus):
+            raise ValueError("duplicate sku_id in receive lines")
+        return lines
+
+
+class ReceiveLineOut(BaseModel):
+    sku_id: str
+    received: int
+
+
+class ReceiveResponse(BaseModel):
+    receipt_id: UUID
+    state: str
+    lines: list[ReceiveLineOut]
+
+
+class ReceiptLineView(BaseModel):
+    sku_id: str
+    expected: int
+    received: int
+
+
+class ReceiptResponse(BaseModel):
+    receipt_id: UUID
+    kind: str
+    state: str
+    version: int
+    lines: list[ReceiptLineView]

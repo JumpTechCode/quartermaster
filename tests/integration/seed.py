@@ -19,7 +19,7 @@ from quartermaster.adapters.postgres.tables import (
 from quartermaster.adapters.postgres.tables import (
     sku as sku_table,
 )
-from quartermaster.domain.ids import OrderId, SkuId
+from quartermaster.domain.ids import LocationId, OrderId, SkuId
 from quartermaster.domain.state_machines import OrderState, ReservationState
 
 
@@ -58,6 +58,22 @@ async def seed_order(engine: AsyncEngine, *, state: OrderState, lines: dict[str,
                 )
             )
     return order_id
+
+
+async def seed_sku(engine: AsyncEngine, sku: str) -> SkuId:
+    """Insert a single SKU into the catalog."""
+    async with engine.begin() as conn:
+        await conn.execute(sku_table.insert().values(sku_id=sku, description="widget", unit="each"))
+    return SkuId(sku)
+
+
+async def seed_location(
+    engine: AsyncEngine, location_id: str, kind: str = "receiving"
+) -> LocationId:
+    """Insert a single storage location."""
+    async with engine.begin() as conn:
+        await conn.execute(location.insert().values(location_id=location_id, kind=kind))
+    return LocationId(location_id)
 
 
 async def assert_invariants(engine: AsyncEngine, sku: SkuId) -> None:

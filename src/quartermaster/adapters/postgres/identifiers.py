@@ -16,7 +16,7 @@ from uuid import UUID
 
 import uuid_utils
 
-from quartermaster.domain.ids import MovementId, OrderId, ReservationId
+from quartermaster.domain.ids import MovementId, OrderId, ReceiptId, ReservationId
 
 
 def new_uuid7() -> UUID:
@@ -37,3 +37,8 @@ def new_reservation_id() -> ReservationId:
 def new_movement_id() -> MovementId:
     """Mint a fresh movement (ledger entry) identifier."""
     return MovementId(new_uuid7())
+
+
+def new_receipt_id() -> ReceiptId:
+    """Mint a fresh receipt identifier."""
+    return ReceiptId(new_uuid7())

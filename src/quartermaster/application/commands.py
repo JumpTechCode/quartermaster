@@ -12,7 +12,13 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from quartermaster.domain.ids import IdempotencyKey, OrderId, SkuId
+from quartermaster.domain.ids import (
+    IdempotencyKey,
+    LocationId,
+    OrderId,
+    ReceiptId,
+    SkuId,
+)
 
 
 def _fingerprint(payload: dict[str, Any]) -> str:
@@ -55,3 +61,86 @@ class PickCommand:
 
     def fingerprint(self) -> str:
         return _fingerprint({"command": "pick", "order_id": str(self.order_id)})
+
+
+@dataclass(frozen=True)
+class PackCommand:
+    """Advance a picked order to ``packed``."""
+
+    order_id: OrderId
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        return _fingerprint({"command": "pack", "order_id": str(self.order_id)})
+
+
+@dataclass(frozen=True)
+class ShipCommand:
+    """Advance a packed order to ``shipped``, finalizing shipped quantities."""
+
+    order_id: OrderId
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        return _fingerprint({"command": "ship", "order_id": str(self.order_id)})
+
+
+@dataclass(frozen=True)
+class CancelCommand:
+    """Cancel a pre-pick order, releasing its held reservations."""
+
+    order_id: OrderId
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        return _fingerprint({"command": "cancel", "order_id": str(self.order_id)})
+
+
+@dataclass(frozen=True)
+class CreateReceiptCommand:
+    """Create a new supplier receipt with the given expected lines."""
+
+    lines: tuple[tuple[SkuId, int], ...]
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        sorted_lines: list[list[SkuId | int]] = sorted(
+            ([sku, qty] for sku, qty in self.lines),
+            key=lambda pair: pair[0],
+        )
+        return _fingerprint({"command": "create_receipt", "lines": sorted_lines})
+
+
+@dataclass(frozen=True)
+class ArriveCommand:
+    """Advance a receipt ``expected -> arrived``."""
+
+    receipt_id: ReceiptId
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        return _fingerprint({"command": "arrive", "receipt_id": str(self.receipt_id)})
+
+
+@dataclass(frozen=True)
+class ReceiveCommand:
+    """Record received quantities for a receipt, landing stock at one location."""
+
+    receipt_id: ReceiptId
+    location_id: LocationId
+    lines: tuple[tuple[SkuId, int], ...]
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        sorted_lines: list[list[SkuId | int]] = sorted(
+            ([sku, qty] for sku, qty in self.lines),
+            key=lambda pair: pair[0],
+        )
+        return _fingerprint(
+            {
+                "command": "receive",
+                "receipt_id": str(self.receipt_id),
+                "location_id": str(self.location_id),
+                "lines": sorted_lines,
+            }
+        )

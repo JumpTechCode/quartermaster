@@ -94,6 +94,10 @@ async def test_allocate_key_reuse_409() -> None:
     resp = await _post(uow)
     assert resp.status_code == 409
     assert resp.json()["error"] == "idempotency_key_reuse"
+    # Detail is a sentence referencing the key, not a bare key token.
+    detail = resp.json()["detail"]
+    assert "k1" in detail
+    assert "reused" in detail
 
 
 async def test_allocate_retry_exhausted_503() -> None:

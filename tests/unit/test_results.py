@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from quartermaster.application.results import AllocateResult, LineAllocation
-from quartermaster.domain.ids import OrderId, ReservationId, SkuId
-from quartermaster.domain.state_machines import OrderState
+from quartermaster.application.results import (
+    AllocateResult,
+    ArriveResult,
+    CreatedReceiptLine,
+    CreateReceiptResult,
+    LineAllocation,
+    ReceivedLine,
+    ReceiveResult,
+)
+from quartermaster.domain.ids import OrderId, ReceiptId, ReservationId, SkuId
+from quartermaster.domain.receipts import ReceiptKind
+from quartermaster.domain.state_machines import OrderState, ReceiptState
 
 RESULT = AllocateResult(
     order_id=OrderId(UUID("00000000-0000-7000-8000-000000000001")),
@@ -14,6 +23,8 @@ RESULT = AllocateResult(
     lines=(LineAllocation(SkuId("SKU1"), 3), LineAllocation(SkuId("SKU2"), 0)),
     reservation_ids=(ReservationId(UUID("00000000-0000-7000-8000-0000000000aa")),),
 )
+
+_RID = ReceiptId(UUID("00000000-0000-7000-8000-000000000005"))
 
 
 def test_response_round_trips() -> None:
@@ -92,3 +103,70 @@ def test_pick_result_response_is_json_safe() -> None:
     encoded = result.to_response()
     assert json.loads(json.dumps(encoded)) == encoded
     assert encoded["state"] == "picked"
+
+
+def test_pack_result_roundtrip() -> None:
+    from uuid import UUID
+
+    from quartermaster.application.results import PackResult
+    from quartermaster.domain.ids import OrderId
+    from quartermaster.domain.state_machines import OrderState
+
+    result = PackResult(
+        order_id=OrderId(UUID("00000000-0000-7000-8000-000000000001")),
+        state=OrderState.PACKED,
+    )
+    assert PackResult.decode(result.to_response()) == result
+    assert result.to_response()["state"] == "packed"
+
+
+def test_ship_result_roundtrip() -> None:
+    from uuid import UUID
+
+    from quartermaster.application.results import ShippedLine, ShipResult
+    from quartermaster.domain.ids import OrderId, SkuId
+    from quartermaster.domain.state_machines import OrderState
+
+    result = ShipResult(
+        order_id=OrderId(UUID("00000000-0000-7000-8000-000000000001")),
+        state=OrderState.SHIPPED,
+        lines=(ShippedLine(SkuId("A"), 5),),
+    )
+    assert ShipResult.decode(result.to_response()) == result
+    assert result.to_response()["state"] == "shipped"
+
+
+def test_cancel_result_roundtrip() -> None:
+    from uuid import UUID
+
+    from quartermaster.application.results import CancelResult
+    from quartermaster.domain.ids import OrderId, ReservationId
+    from quartermaster.domain.state_machines import OrderState
+
+    result = CancelResult(
+        order_id=OrderId(UUID("00000000-0000-7000-8000-000000000001")),
+        state=OrderState.CANCELLED,
+        released_reservation_ids=(ReservationId(UUID("00000000-0000-7000-8000-0000000000aa")),),
+    )
+    assert CancelResult.decode(result.to_response()) == result
+    assert result.to_response()["state"] == "cancelled"
+
+
+def test_create_receipt_result_round_trips() -> None:
+    r = CreateReceiptResult(
+        _RID,
+        ReceiptKind.SUPPLIER_RECEIPT,
+        ReceiptState.EXPECTED,
+        (CreatedReceiptLine(SkuId("A"), 5),),
+    )
+    assert CreateReceiptResult.decode(r.to_response()) == r
+
+
+def test_arrive_result_round_trips() -> None:
+    r = ArriveResult(_RID, ReceiptState.ARRIVED)
+    assert ArriveResult.decode(r.to_response()) == r
+
+
+def test_receive_result_round_trips() -> None:
+    r = ReceiveResult(_RID, ReceiptState.RECEIVED, (ReceivedLine(SkuId("A"), 3),))
+    assert ReceiveResult.decode(r.to_response()) == r

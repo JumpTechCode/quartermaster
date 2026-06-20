@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from quartermaster.adapters.postgres.tables import (
@@ -16,9 +17,14 @@ from quartermaster.adapters.postgres.tables import (
     movement,
     order_line,
     orders,
+    receipt,
+    receipt_line,
     reservation,
     sku,
     stock,
+)
+from quartermaster.adapters.postgres.tables import (
+    location as location_table,
 )
 from quartermaster.application.ports import (
     CatalogRepo,
@@ -26,6 +32,7 @@ from quartermaster.application.ports import (
     IdempotencyRepo,
     MovementRepo,
     OrderRepo,
+    ReceiptRepo,
     ReservationRepo,
     StockRepo,
     StoredResponse,
@@ -37,13 +44,15 @@ from quartermaster.domain.ids import (
     IdempotencyKey,
     LocationId,
     OrderId,
+    ReceiptId,
     ReservationId,
     SkuId,
 )
 from quartermaster.domain.movements import Movement
 from quartermaster.domain.orders import Order, OrderLine
+from quartermaster.domain.receipts import Receipt, ReceiptKind, ReceiptLine
 from quartermaster.domain.reservations import Reservation
-from quartermaster.domain.state_machines import OrderState, ReservationState
+from quartermaster.domain.state_machines import OrderState, ReceiptState, ReservationState
 
 _RESERVE_UP_TO = text(
     """
@@ -96,6 +105,32 @@ class PgStockRepo:
             )
         )
         return result.rowcount == 1
+
+    async def release(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        result = await self._conn.execute(
+            stock.update()
+            .where(
+                stock.c.sku_id == sku,
+                stock.c.location_id == location,
+                stock.c.qty_reserved >= qty,
+            )
+            .values(qty_reserved=stock.c.qty_reserved - qty)
+        )
+        return result.rowcount == 1
+
+    async def add_on_hand(self, sku: SkuId, location: LocationId, qty: int) -> None:
+        stmt = pg_insert(stock).values(
+            sku_id=sku, location_id=location, qty_on_hand=qty, qty_reserved=0
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[stock.c.sku_id, stock.c.location_id],
+            # Increment the EXISTING committed row value, not excluded.qty_on_hand
+            # (the proposed insert). Under READ COMMITTED the ON CONFLICT path takes
+            # the row lock, so a concurrent receiver to the same cell blocks, re-reads
+            # the committed total, and adds — no lost update. Do not "simplify" to excluded.
+            set_={"qty_on_hand": stock.c.qty_on_hand + qty},
+        )
+        await self._conn.execute(stmt)
 
 
 class PgOrderRepo:
@@ -175,6 +210,18 @@ class PgOrderRepo:
         )
         return result.rowcount == 1
 
+    async def add_shipped(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        result = await self._conn.execute(
+            order_line.update()
+            .where(
+                order_line.c.order_id == order_id,
+                order_line.c.sku_id == sku_id,
+                order_line.c.shipped_qty + qty <= order_line.c.picked_qty,
+            )
+            .values(shipped_qty=order_line.c.shipped_qty + qty)
+        )
+        return result.rowcount == 1
+
     async def insert_order(self, order: Order, lines: Sequence[OrderLine]) -> None:
         await self._conn.execute(
             orders.insert().values(
@@ -205,6 +252,95 @@ class PgOrderRepo:
             )
 
 
+class PgReceiptRepo:
+    def __init__(self, conn: AsyncConnection) -> None:
+        self._conn = conn
+
+    async def get(self, receipt_id: ReceiptId) -> Receipt | None:
+        row = (
+            await self._conn.execute(select(receipt).where(receipt.c.receipt_id == receipt_id))
+        ).first()
+        if row is None:
+            return None
+        return Receipt(
+            receipt_id=ReceiptId(row.receipt_id),
+            kind=ReceiptKind(row.kind),
+            state=ReceiptState(row.state),
+            version=int(row.version),
+            created_at=row.created_at,
+            origin_order_id=(
+                OrderId(row.origin_order_id) if row.origin_order_id is not None else None
+            ),
+        )
+
+    async def get_lines(self, receipt_id: ReceiptId) -> list[ReceiptLine]:
+        rows = await self._conn.execute(
+            select(receipt_line)
+            .where(receipt_line.c.receipt_id == receipt_id)
+            .order_by(receipt_line.c.sku_id)
+        )
+        return [
+            ReceiptLine(
+                receipt_id=ReceiptId(r.receipt_id),
+                sku_id=SkuId(r.sku_id),
+                expected=int(r.expected_qty),
+                received=int(r.received_qty),
+            )
+            for r in rows
+        ]
+
+    async def insert_receipt(self, receipt_obj: Receipt, lines: Sequence[ReceiptLine]) -> None:
+        await self._conn.execute(
+            receipt.insert().values(
+                receipt_id=receipt_obj.receipt_id,
+                kind=receipt_obj.kind.value,
+                state=receipt_obj.state.value,
+                version=receipt_obj.version,
+                created_at=receipt_obj.created_at,
+                origin_order_id=receipt_obj.origin_order_id,
+            )
+        )
+        for line in lines:
+            await self._conn.execute(
+                receipt_line.insert().values(
+                    receipt_id=line.receipt_id,
+                    sku_id=line.sku_id,
+                    expected_qty=line.expected,
+                    received_qty=line.received,
+                )
+            )
+
+    async def cas_state(
+        self,
+        receipt_id: ReceiptId,
+        expected_state: ReceiptState,
+        expected_version: int,
+        new_state: ReceiptState,
+    ) -> bool:
+        result = await self._conn.execute(
+            receipt.update()
+            .where(
+                receipt.c.receipt_id == receipt_id,
+                receipt.c.state == expected_state.value,
+                receipt.c.version == expected_version,
+            )
+            .values(state=new_state.value, version=receipt.c.version + 1)
+        )
+        return result.rowcount == 1
+
+    async def add_received(self, receipt_id: ReceiptId, sku_id: SkuId, qty: int) -> bool:
+        result = await self._conn.execute(
+            receipt_line.update()
+            .where(
+                receipt_line.c.receipt_id == receipt_id,
+                receipt_line.c.sku_id == sku_id,
+                receipt_line.c.received_qty + qty <= receipt_line.c.expected_qty,
+            )
+            .values(received_qty=receipt_line.c.received_qty + qty)
+        )
+        return result.rowcount == 1
+
+
 class PgCatalogRepo:
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
@@ -215,6 +351,14 @@ class PgCatalogRepo:
         rows = await self._conn.execute(select(sku.c.sku_id).where(sku.c.sku_id.in_(list(skus))))
         found = {SkuId(r.sku_id) for r in rows}
         return skus - found
+
+    async def location_exists(self, location: LocationId) -> bool:
+        row = (
+            await self._conn.execute(
+                select(location_table.c.location_id).where(location_table.c.location_id == location)
+            )
+        ).first()
+        return row is not None
 
 
 class PgReservationRepo:
@@ -343,6 +487,7 @@ class PostgresUnitOfWork:
 
     stock: StockRepo
     orders: OrderRepo
+    receipts: ReceiptRepo
     reservations: ReservationRepo
     movements: MovementRepo
     idempotency: IdempotencyRepo
@@ -357,6 +502,7 @@ class PostgresUnitOfWork:
         self._trans = await self._conn.begin()
         self.stock = PgStockRepo(self._conn)
         self.orders = PgOrderRepo(self._conn)
+        self.receipts = PgReceiptRepo(self._conn)
         self.reservations = PgReservationRepo(self._conn)
         self.movements = PgMovementRepo(self._conn)
         self.idempotency = PgIdempotencyRepo(self._conn)

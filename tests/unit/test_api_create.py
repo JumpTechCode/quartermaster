@@ -66,6 +66,11 @@ async def test_create_validation_422() -> None:
         resp = await client.post("/orders", json={"lines": []}, headers={"Idempotency-Key": "k1"})
     assert resp.status_code == 422
     assert resp.json()["error"] == "validation_error"
+    # Detail is a shaped field:message summary, not the raw verbose dump.
+    detail = resp.json()["detail"]
+    assert "lines" in detail
+    assert "loc=" not in detail
+    assert "url=" not in detail
 
 
 async def test_create_unknown_sku_422() -> None:
