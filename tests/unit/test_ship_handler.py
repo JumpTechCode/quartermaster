@@ -75,3 +75,12 @@ async def test_ship_cas_conflict_raises_occ_conflict() -> None:
                 )
             )
         )
+
+
+async def test_ship_add_shipped_guard_rejection_raises_occ_conflict() -> None:
+    # cas_state passes (default True) so the per-line loop runs; add_shipped then rejects.
+    orders = FakeOrderRepo(
+        order=_order(OrderState.PACKED), lines=[_line("A", 5)], add_shipped_result=False
+    )
+    with pytest.raises(OccConflict):
+        await _run(FakeUnitOfWork(orders=orders))
