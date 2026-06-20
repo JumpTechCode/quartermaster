@@ -33,3 +33,28 @@ def test_create_order_fingerprint_differs_on_qty() -> None:
     a = CreateOrderCommand(((SkuId("A"), 1),), IdempotencyKey("k"))
     b = CreateOrderCommand(((SkuId("A"), 2),), IdempotencyKey("k"))
     assert a.fingerprint() != b.fingerprint()
+
+
+def test_pick_fingerprint_is_stable_across_keys() -> None:
+    from quartermaster.application.commands import PickCommand
+
+    a = PickCommand(ORDER_A, IdempotencyKey("k1"))
+    b = PickCommand(ORDER_A, IdempotencyKey("k2"))
+    assert a.fingerprint() == b.fingerprint()
+
+
+def test_pick_fingerprint_differs_by_order() -> None:
+    from quartermaster.application.commands import PickCommand
+
+    a = PickCommand(ORDER_A, IdempotencyKey("k"))
+    b = PickCommand(ORDER_B, IdempotencyKey("k"))
+    assert a.fingerprint() != b.fingerprint()
+
+
+def test_pick_fingerprint_differs_from_allocate() -> None:
+    from quartermaster.application.commands import PickCommand
+
+    assert (
+        PickCommand(ORDER_A, IdempotencyKey("k")).fingerprint()
+        != AllocateCommand(ORDER_A, IdempotencyKey("k")).fingerprint()
+    )
