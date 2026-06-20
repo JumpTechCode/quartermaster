@@ -7,8 +7,11 @@ from uuid import UUID
 from quartermaster.application.commands import (
     AllocateCommand,
     ArriveCommand,
+    CancelReceiptCommand,
+    CloseReceiptCommand,
     CreateOrderCommand,
     CreateReceiptCommand,
+    PutawayCommand,
     ReceiveCommand,
 )
 from quartermaster.domain.ids import (
@@ -125,3 +128,21 @@ def test_receive_fingerprint_depends_on_location() -> None:
     a = ReceiveCommand(_RID, LocationId("L1"), ((SkuId("A"), 1),), IdempotencyKey("k"))
     b = ReceiveCommand(_RID, LocationId("L2"), ((SkuId("A"), 1),), IdempotencyKey("k"))
     assert a.fingerprint() != b.fingerprint()
+
+
+def test_putaway_fingerprint_depends_on_locations() -> None:
+    a = PutawayCommand(_RID, LocationId("RCV"), LocationId("A1"), IdempotencyKey("k"))
+    b = PutawayCommand(_RID, LocationId("RCV"), LocationId("A2"), IdempotencyKey("k"))
+    assert a.fingerprint() != b.fingerprint()
+
+
+def test_putaway_fingerprint_independent_of_key() -> None:
+    a = PutawayCommand(_RID, LocationId("RCV"), LocationId("A1"), IdempotencyKey("k1"))
+    b = PutawayCommand(_RID, LocationId("RCV"), LocationId("A1"), IdempotencyKey("k2"))
+    assert a.fingerprint() == b.fingerprint()
+
+
+def test_close_and_cancel_receipt_fingerprints_differ() -> None:
+    close = CloseReceiptCommand(_RID, IdempotencyKey("k"))
+    cancel = CancelReceiptCommand(_RID, IdempotencyKey("k"))
+    assert close.fingerprint() != cancel.fingerprint()

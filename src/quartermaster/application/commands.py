@@ -144,3 +144,45 @@ class ReceiveCommand:
                 "lines": sorted_lines,
             }
         )
+
+
+@dataclass(frozen=True)
+class PutawayCommand:
+    """Relocate a receipt's received stock from the receiving location to a shelf."""
+
+    receipt_id: ReceiptId
+    from_location: LocationId
+    to_location: LocationId
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        return _fingerprint(
+            {
+                "command": "putaway",
+                "receipt_id": str(self.receipt_id),
+                "from_location": str(self.from_location),
+                "to_location": str(self.to_location),
+            }
+        )
+
+
+@dataclass(frozen=True)
+class CloseReceiptCommand:
+    """Advance a receipt ``putaway_complete -> closed``."""
+
+    receipt_id: ReceiptId
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        return _fingerprint({"command": "close_receipt", "receipt_id": str(self.receipt_id)})
+
+
+@dataclass(frozen=True)
+class CancelReceiptCommand:
+    """Cancel a pre-receiving receipt (``expected``/``arrived`` -> ``cancelled``)."""
+
+    receipt_id: ReceiptId
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        return _fingerprint({"command": "cancel_receipt", "receipt_id": str(self.receipt_id)})
