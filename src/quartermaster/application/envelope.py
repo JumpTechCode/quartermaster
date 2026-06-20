@@ -70,7 +70,9 @@ async def execute[C: Command, R: Response](
                 stored = await uow.idempotency.load(command.key)
                 assert stored is not None  # claim said EXISTS, so the row is there
                 if stored.command_fingerprint != fingerprint:
-                    raise IdempotencyKeyReuse(command.key)
+                    raise IdempotencyKeyReuse(
+                        f"idempotency key {command.key!r} reused with a different command"
+                    )
                 if stored.status is IdempotencyStatus.REJECTED:
                     raise _rejection_error(stored.response)
                 assert stored.response is not None

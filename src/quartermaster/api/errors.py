@@ -55,8 +55,27 @@ def _make_handler(status: int, code: str) -> _Handler:
     return handler
 
 
+def _shape_validation_errors(exc: RequestValidationError) -> str:
+    """Reduce ``exc.errors()`` into a concise ``field: message`` summary.
+
+    The default ``str(RequestValidationError)`` dump includes the full Pydantic
+    error structure (loc, msg, type, input, url) which is verbose and leaks
+    internal structure. This keeps only the field path and message.
+    """
+    parts: list[str] = []
+    for err in exc.errors():
+        loc = ".".join(str(p) for p in err.get("loc", ()) if p != "body")
+        msg = err.get("msg", "invalid")
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    return "; ".join(parts) if parts else "validation failed"
+
+
 async def _validation_handler(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(status_code=422, content=_error_body("validation_error", str(exc)))
+    assert isinstance(exc, RequestValidationError)
+    return JSONResponse(
+        status_code=422,
+        content=_error_body("validation_error", _shape_validation_errors(exc)),
+    )
 
 
 async def _internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
