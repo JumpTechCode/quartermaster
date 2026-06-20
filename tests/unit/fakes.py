@@ -44,6 +44,8 @@ class FakeStockRepo:
         self.reserve_calls: list[tuple[SkuId, LocationId, int]] = []
         self.consume_result = True
         self.consume_calls: list[tuple[SkuId, LocationId, int]] = []
+        self.release_result = True
+        self.release_calls: list[tuple[SkuId, LocationId, int]] = []
 
     async def stock_locations(self, sku: SkuId) -> list[tuple[LocationId, int]]:
         locs = [(loc, avail) for (s, loc), avail in self.cells.items() if s == sku and avail > 0]
@@ -60,6 +62,10 @@ class FakeStockRepo:
         self.consume_calls.append((sku, location, qty))
         return self.consume_result
 
+    async def release(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        self.release_calls.append((sku, location, qty))
+        return self.release_result
+
 
 class FakeOrderRepo:
     def __init__(
@@ -70,15 +76,18 @@ class FakeOrderRepo:
         *,
         add_allocated_result: bool = True,
         add_picked_result: bool = True,
+        add_shipped_result: bool = True,
     ) -> None:
         self.order = order
         self.lines = lines or []
         self.cas_result = cas_result
         self.add_allocated_result = add_allocated_result
         self.add_picked_result = add_picked_result
+        self.add_shipped_result = add_shipped_result
         self.cas_calls: list[tuple[OrderId, OrderState, int, OrderState]] = []
         self.allocated: list[tuple[OrderId, SkuId, int]] = []
         self.picked: list[tuple[OrderId, SkuId, int]] = []
+        self.shipped: list[tuple[OrderId, SkuId, int]] = []
         self.inserted: list[tuple[Order, list[OrderLine]]] = []
 
     async def get(self, order_id: OrderId) -> Order | None:
@@ -104,6 +113,10 @@ class FakeOrderRepo:
     async def add_picked(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
         self.picked.append((order_id, sku_id, qty))
         return self.add_picked_result
+
+    async def add_shipped(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        self.shipped.append((order_id, sku_id, qty))
+        return self.add_shipped_result
 
     async def insert_order(self, order: Order, lines: Sequence[OrderLine]) -> None:
         self.inserted.append((order, list(lines)))

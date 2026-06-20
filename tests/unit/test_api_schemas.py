@@ -18,6 +18,11 @@ def test_empty_lines_rejected() -> None:
         CreateOrderRequest(lines=[])
 
 
+def test_too_many_lines_rejected() -> None:
+    with pytest.raises(ValidationError):
+        CreateOrderRequest(lines=[{"sku_id": f"SKU-{i}", "qty": 1} for i in range(101)])
+
+
 def test_nonpositive_qty_rejected() -> None:
     with pytest.raises(ValidationError):
         CreateOrderRequest(lines=[{"sku_id": "A", "qty": 0}])

@@ -119,3 +119,78 @@ class PickResult:
                 PickedLine(SkuId(line["sku_id"]), int(line["picked"])) for line in data["lines"]
             ),
         )
+
+
+@dataclass(frozen=True)
+class PackResult:
+    """The outcome of a ``pack``: the order is ``packed``."""
+
+    order_id: OrderId
+    state: OrderState
+
+    def to_response(self) -> dict[str, Any]:
+        return {"order_id": str(self.order_id), "state": self.state.value}
+
+    @classmethod
+    def decode(cls, data: dict[str, Any]) -> PackResult:
+        return cls(order_id=OrderId(UUID(data["order_id"])), state=OrderState(data["state"]))
+
+
+@dataclass(frozen=True)
+class ShippedLine:
+    """How much of one line was shipped."""
+
+    sku_id: SkuId
+    shipped: int
+
+
+@dataclass(frozen=True)
+class ShipResult:
+    """The outcome of a ``ship``: the order is ``shipped`` and what shipped per line."""
+
+    order_id: OrderId
+    state: OrderState
+    lines: tuple[ShippedLine, ...]
+
+    def to_response(self) -> dict[str, Any]:
+        return {
+            "order_id": str(self.order_id),
+            "state": self.state.value,
+            "lines": [{"sku_id": line.sku_id, "shipped": line.shipped} for line in self.lines],
+        }
+
+    @classmethod
+    def decode(cls, data: dict[str, Any]) -> ShipResult:
+        return cls(
+            order_id=OrderId(UUID(data["order_id"])),
+            state=OrderState(data["state"]),
+            lines=tuple(
+                ShippedLine(SkuId(line["sku_id"]), int(line["shipped"])) for line in data["lines"]
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class CancelResult:
+    """The outcome of a ``cancel``: the order is ``cancelled`` and which reservations released."""
+
+    order_id: OrderId
+    state: OrderState
+    released_reservation_ids: tuple[ReservationId, ...]
+
+    def to_response(self) -> dict[str, Any]:
+        return {
+            "order_id": str(self.order_id),
+            "state": self.state.value,
+            "released_reservation_ids": [str(rid) for rid in self.released_reservation_ids],
+        }
+
+    @classmethod
+    def decode(cls, data: dict[str, Any]) -> CancelResult:
+        return cls(
+            order_id=OrderId(UUID(data["order_id"])),
+            state=OrderState(data["state"]),
+            released_reservation_ids=tuple(
+                ReservationId(UUID(rid)) for rid in data["released_reservation_ids"]
+            ),
+        )
