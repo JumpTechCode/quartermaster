@@ -7,13 +7,16 @@ from typing import Any
 
 import pytest
 
-from quartermaster.application.envelope import execute
+from quartermaster.application.envelope import HARD_REJECTION, _rejection_error, execute
 from quartermaster.application.errors import OccConflict, RetryExhausted
 from quartermaster.application.ports import ClaimOutcome, StoredResponse, UnitOfWork
 from quartermaster.domain.errors import (
     IdempotencyKeyReuse,
     IllegalTransition,
     InsufficientStock,
+    InvalidReceiptLine,
+    ReceiptNotFound,
+    UnknownLocation,
 )
 from quartermaster.domain.idempotency import IdempotencyStatus
 from quartermaster.domain.ids import IdempotencyKey
@@ -189,3 +192,20 @@ async def test_unknown_sku_replay_reraises() -> None:
 
     with pytest.raises(UnknownSku):
         await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)
+
+
+def test_inbound_errors_are_hard_rejections() -> None:
+    for exc_type in (ReceiptNotFound, UnknownLocation, InvalidReceiptLine):
+        assert exc_type in HARD_REJECTION
+
+
+def test_rejection_error_maps_inbound_codes() -> None:
+    assert isinstance(
+        _rejection_error({"error": "ReceiptNotFound", "detail": "x"}), ReceiptNotFound
+    )
+    assert isinstance(
+        _rejection_error({"error": "UnknownLocation", "detail": "x"}), UnknownLocation
+    )
+    assert isinstance(
+        _rejection_error({"error": "InvalidReceiptLine", "detail": "x"}), InvalidReceiptLine
+    )
