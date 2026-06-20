@@ -78,6 +78,28 @@ class PickResponse(BaseModel):
     lines: list[PickedLineOut]
 
 
+class PackResponse(BaseModel):
+    order_id: UUID
+    state: str
+
+
+class ShippedLineOut(BaseModel):
+    sku_id: str
+    shipped: int
+
+
+class ShipResponse(BaseModel):
+    order_id: UUID
+    state: str
+    lines: list[ShippedLineOut]
+
+
+class CancelResponse(BaseModel):
+    order_id: UUID
+    state: str
+    released_reservation_ids: list[UUID]
+
+
 class ErrorResponse(BaseModel):
     error: str
     detail: str

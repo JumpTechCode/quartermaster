@@ -59,6 +59,13 @@ class StockRepo(Protocol):
         """
         ...
 
+    async def release(self, sku: SkuId, location: LocationId, qty: int) -> bool:
+        """Cancel/release: ``reserved -= qty`` guarded by ``reserved >= qty`` (on-hand unchanged).
+
+        Returns True if the row was updated, False if the guard rejected the write.
+        """
+        ...
+
 
 class OrderRepo(Protocol):
     async def get(self, order_id: OrderId) -> Order | None: ...
@@ -83,6 +90,14 @@ class OrderRepo(Protocol):
 
     async def add_picked(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
         """Increment picked_qty by qty only if picked_qty + qty <= allocated_qty.
+
+        Returns True if the row was updated, False if the guard rejected the write
+        (an OCC conflict signal).
+        """
+        ...
+
+    async def add_shipped(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        """Increment shipped_qty by qty only if shipped_qty + qty <= picked_qty.
 
         Returns True if the row was updated, False if the guard rejected the write
         (an OCC conflict signal).
