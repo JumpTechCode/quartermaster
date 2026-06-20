@@ -3,7 +3,7 @@
 [![ci](https://github.com/JumpTechCode/quartermaster/actions/workflows/ci.yml/badge.svg)](https://github.com/JumpTechCode/quartermaster/actions/workflows/ci.yml)
 [![codeql](https://github.com/JumpTechCode/quartermaster/actions/workflows/codeql.yml/badge.svg)](https://github.com/JumpTechCode/quartermaster/actions/workflows/codeql.yml)
 
-Quartermaster is a warehouse inventory engine that aims to stay correct under
+The Quartermaster is a warehouse inventory engine that aims to stay correct under
 concurrent load. It models stock held at shelf and bin locations, driven by
 inbound (receiving and putaway) and outbound (allocate, pick, pack, ship)
 document flows. Every command is idempotent, two state machines decide which
