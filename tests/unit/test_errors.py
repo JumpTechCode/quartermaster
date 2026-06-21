@@ -13,6 +13,7 @@ from quartermaster.domain.errors import (
     OrderNotFound,
     QuartermasterError,
     ReceiptNotFound,
+    ReturnNotAllowed,
     UnknownLocation,
 )
 
@@ -22,6 +23,7 @@ DOMAIN_ERRORS: list[type[QuartermasterError]] = [
     InsufficientStock,
     IdempotencyKeyReuse,
     OrderNotFound,
+    ReturnNotAllowed,
 ]
 
 

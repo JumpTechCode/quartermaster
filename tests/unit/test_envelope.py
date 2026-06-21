@@ -200,6 +200,15 @@ def test_inbound_errors_are_hard_rejections() -> None:
         assert exc_type in HARD_REJECTION
 
 
+def test_return_not_allowed_is_a_hard_rejection() -> None:
+    from quartermaster.domain.errors import ReturnNotAllowed
+
+    assert ReturnNotAllowed in HARD_REJECTION
+    assert isinstance(
+        _rejection_error({"error": "ReturnNotAllowed", "detail": "x"}), ReturnNotAllowed
+    )
+
+
 def test_rejection_error_maps_inbound_codes() -> None:
     assert isinstance(
         _rejection_error({"error": "ReceiptNotFound", "detail": "x"}), ReceiptNotFound

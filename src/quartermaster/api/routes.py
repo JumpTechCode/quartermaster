@@ -22,6 +22,7 @@ from quartermaster.api.schemas import (
     CreateOrderResponse,
     CreateReceiptRequest,
     CreateReceiptResponse,
+    CreateReturnRequest,
     ExpectedLineOut,
     OrderLineView,
     OrderResponse,
@@ -46,6 +47,7 @@ from quartermaster.application.handlers.cancel_receipt import run_cancel_receipt
 from quartermaster.application.handlers.close_receipt import run_close_receipt
 from quartermaster.application.handlers.create_order import run_create_order
 from quartermaster.application.handlers.create_receipt import run_create_receipt
+from quartermaster.application.handlers.create_return import run_create_return
 from quartermaster.application.handlers.pack import run_pack
 from quartermaster.application.handlers.pick import run_pick
 from quartermaster.application.handlers.putaway import run_putaway
@@ -212,6 +214,7 @@ def build_router(deps: Deps) -> APIRouter:
             kind=view.kind.value,
             state=view.state.value,
             version=view.version,
+            origin_order_id=view.origin_order_id,
             lines=[
                 ReceiptLineView(sku_id=line.sku_id, expected=line.expected, received=line.received)
                 for line in view.lines
@@ -230,6 +233,34 @@ def build_router(deps: Deps) -> APIRouter:
         lines = tuple((SkuId(line.sku_id), line.qty) for line in body.lines)
         result = await run_create_receipt(
             deps.uow_factory, lines, key, now=deps.now, new_receipt_id=deps.new_receipt_id
+        )
+        response.headers["Location"] = f"/receipts/{result.receipt_id}"
+        return CreateReceiptResponse(
+            receipt_id=result.receipt_id,
+            kind=result.kind.value,
+            state=result.state.value,
+            lines=[
+                ExpectedLineOut(sku_id=line.sku_id, expected=line.expected) for line in result.lines
+            ],
+        )
+
+    @router.post(
+        "/returns", status_code=status.HTTP_201_CREATED, response_model=CreateReceiptResponse
+    )
+    async def create_return_route(
+        body: CreateReturnRequest,
+        response: Response,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> CreateReceiptResponse:
+        key = _require_key(idempotency_key)
+        lines = tuple((SkuId(line.sku_id), line.qty) for line in body.lines)
+        result = await run_create_return(
+            deps.uow_factory,
+            OrderId(body.order_id),
+            lines,
+            key,
+            now=deps.now,
+            new_receipt_id=deps.new_receipt_id,
         )
         response.headers["Location"] = f"/receipts/{result.receipt_id}"
         return CreateReceiptResponse(

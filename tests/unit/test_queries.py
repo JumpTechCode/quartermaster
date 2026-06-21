@@ -53,8 +53,25 @@ async def test_load_receipt_returns_view() -> None:
     assert view.kind is ReceiptKind.SUPPLIER_RECEIPT
     assert view.state is ReceiptState.EXPECTED
     assert view.lines == (line,)
+    assert view.origin_order_id is None
 
 
 async def test_load_receipt_missing_returns_none() -> None:
     uow = FakeUnitOfWork(receipts=FakeReceiptRepo(receipt=None))
     assert await load_receipt(fake_factory(uow), _RID) is None
+
+
+async def test_load_receipt_exposes_rma_origin() -> None:
+    origin = OrderId(UUID("00000000-0000-7000-8000-000000000009"))
+    receipt = Receipt(
+        _RID,
+        ReceiptKind.CUSTOMER_RMA,
+        ReceiptState.EXPECTED,
+        1,
+        datetime(2026, 6, 20, tzinfo=UTC),
+        origin,
+    )
+    uow = FakeUnitOfWork(receipts=FakeReceiptRepo(receipt=receipt, lines=[]))
+    view = await load_receipt(fake_factory(uow), _RID)
+    assert view is not None
+    assert view.origin_order_id == origin

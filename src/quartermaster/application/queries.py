@@ -49,6 +49,7 @@ class ReceiptView:
     kind: ReceiptKind
     state: ReceiptState
     version: int
+    origin_order_id: OrderId | None
     lines: tuple[ReceiptLine, ...]
 
 
@@ -64,5 +65,6 @@ async def load_receipt(uow_factory: UnitOfWorkFactory, receipt_id: ReceiptId) ->
             kind=receipt.kind,
             state=receipt.state,
             version=receipt.version,
+            origin_order_id=receipt.origin_order_id,
             lines=tuple(lines),
         )

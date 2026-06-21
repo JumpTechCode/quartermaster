@@ -54,3 +54,9 @@ class LocationKindMismatch(QuartermasterError):
     shelf, or putting away to a non-shelf (a hard rejection). Allocation only
     reserves from shelves, so stock must stage at a non-shelf cell on receipt and
     only become pickable once put away to a shelf."""
+
+
+class ReturnNotAllowed(QuartermasterError):
+    """A return references an order not in a returnable (shipped) state, or a
+    return line's SKU was not shipped on that order or exceeds the shipped
+    quantity (a hard rejection)."""

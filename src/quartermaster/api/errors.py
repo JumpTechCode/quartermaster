@@ -22,6 +22,7 @@ from quartermaster.domain.errors import (
     LocationKindMismatch,
     OrderNotFound,
     ReceiptNotFound,
+    ReturnNotAllowed,
     UnknownLocation,
     UnknownSku,
 )
@@ -43,6 +44,7 @@ _STATUS_MAP: tuple[tuple[type[Exception], int, str], ...] = (
     (UnknownLocation, 422, "unknown_location"),
     (LocationKindMismatch, 422, "location_kind_mismatch"),
     (InvalidReceiptLine, 422, "invalid_receipt_line"),
+    (ReturnNotAllowed, 422, "return_not_allowed"),
     (OrderNotFound, 404, "order_not_found"),
     (ReceiptNotFound, 404, "receipt_not_found"),
     (IllegalTransition, 409, "illegal_transition"),

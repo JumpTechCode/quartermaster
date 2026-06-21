@@ -146,3 +146,27 @@ def test_close_and_cancel_receipt_fingerprints_differ() -> None:
     close = CloseReceiptCommand(_RID, IdempotencyKey("k"))
     cancel = CancelReceiptCommand(_RID, IdempotencyKey("k"))
     assert close.fingerprint() != cancel.fingerprint()
+
+
+def test_create_return_fingerprint_is_line_order_independent() -> None:
+    from quartermaster.application.commands import CreateReturnCommand
+
+    a = CreateReturnCommand(ORDER_A, ((SkuId("A"), 1), (SkuId("B"), 2)), IdempotencyKey("k1"))
+    b = CreateReturnCommand(ORDER_A, ((SkuId("B"), 2), (SkuId("A"), 1)), IdempotencyKey("k2"))
+    assert a.fingerprint() == b.fingerprint()
+
+
+def test_create_return_fingerprint_depends_on_order() -> None:
+    from quartermaster.application.commands import CreateReturnCommand
+
+    a = CreateReturnCommand(ORDER_A, ((SkuId("A"), 1),), IdempotencyKey("k"))
+    b = CreateReturnCommand(ORDER_B, ((SkuId("A"), 1),), IdempotencyKey("k"))
+    assert a.fingerprint() != b.fingerprint()
+
+
+def test_create_return_fingerprint_differs_from_create_receipt() -> None:
+    from quartermaster.application.commands import CreateReturnCommand
+
+    ret = CreateReturnCommand(ORDER_A, ((SkuId("A"), 1),), IdempotencyKey("k"))
+    rcv = CreateReceiptCommand(((SkuId("A"), 1),), IdempotencyKey("k"))
+    assert ret.fingerprint() != rcv.fingerprint()

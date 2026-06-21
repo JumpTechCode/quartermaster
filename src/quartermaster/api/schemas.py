@@ -136,6 +136,19 @@ class CreateReceiptResponse(BaseModel):
     lines: list[ExpectedLineOut]
 
 
+class CreateReturnRequest(BaseModel):
+    order_id: UUID
+    lines: list[ReceiptLineInput] = Field(min_length=1, max_length=100)
+
+    @field_validator("lines")
+    @classmethod
+    def _no_duplicate_skus(cls, lines: list[ReceiptLineInput]) -> list[ReceiptLineInput]:
+        skus = [line.sku_id for line in lines]
+        if len(set(skus)) != len(skus):
+            raise ValueError("duplicate sku_id in return lines")
+        return lines
+
+
 class ArriveResponse(BaseModel):
     receipt_id: UUID
     state: str
@@ -176,6 +189,7 @@ class ReceiptResponse(BaseModel):
     kind: str
     state: str
     version: int
+    origin_order_id: UUID | None = None
     lines: list[ReceiptLineView]
 
 

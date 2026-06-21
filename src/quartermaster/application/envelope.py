@@ -23,6 +23,7 @@ from quartermaster.domain.errors import (
     LocationKindMismatch,
     OrderNotFound,
     ReceiptNotFound,
+    ReturnNotAllowed,
     UnknownLocation,
     UnknownSku,
 )
@@ -39,6 +40,7 @@ _REJECTION_TYPES: dict[str, type[Exception]] = {
     "UnknownLocation": UnknownLocation,
     "InvalidReceiptLine": InvalidReceiptLine,
     "LocationKindMismatch": LocationKindMismatch,
+    "ReturnNotAllowed": ReturnNotAllowed,
 }
 
 
@@ -57,6 +59,7 @@ HARD_REJECTION: tuple[type[Exception], ...] = (
     UnknownLocation,
     InvalidReceiptLine,
     LocationKindMismatch,
+    ReturnNotAllowed,
 )
 TRANSIENT: tuple[type[Exception], ...] = (InsufficientStock,)
 

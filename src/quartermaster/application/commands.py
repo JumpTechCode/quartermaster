@@ -186,3 +186,21 @@ class CancelReceiptCommand:
 
     def fingerprint(self) -> str:
         return _fingerprint({"command": "cancel_receipt", "receipt_id": str(self.receipt_id)})
+
+
+@dataclass(frozen=True)
+class CreateReturnCommand:
+    """Create a customer-RMA receipt for goods returned against a shipped order."""
+
+    order_id: OrderId
+    lines: tuple[tuple[SkuId, int], ...]
+    key: IdempotencyKey
+
+    def fingerprint(self) -> str:
+        sorted_lines: list[list[SkuId | int]] = sorted(
+            ([sku, qty] for sku, qty in self.lines),
+            key=lambda pair: pair[0],
+        )
+        return _fingerprint(
+            {"command": "create_return", "order_id": str(self.order_id), "lines": sorted_lines}
+        )
