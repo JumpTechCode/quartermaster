@@ -22,6 +22,7 @@ class ReaperRun:
 
     scanned: int = 0
     acted: int = 0
+    reopened: int = 0
     errors: int = 0
 
 

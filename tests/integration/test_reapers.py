@@ -66,7 +66,9 @@ async def _reservation_state(engine: AsyncEngine, reservation_id: object) -> str
 
 async def test_expires_due_reservation(committed_db: AsyncEngine) -> None:
     sku = await seed_sku_locations_stock(committed_db, "S", {"L1": 10})
-    order_id = await seed_order(committed_db, state=OrderState.ALLOCATED, lines={"S": 3})
+    order_id = await seed_order(
+        committed_db, state=OrderState.ALLOCATED, lines={"S": 3}, allocated={"S": 3}
+    )
     res_id = await seed_held_reservation(
         committed_db,
         sku=sku,
@@ -117,7 +119,9 @@ async def test_not_yet_due_reservation_is_untouched(committed_db: AsyncEngine) -
 
 async def test_concurrent_reapers_expire_exactly_once(committed_db: AsyncEngine) -> None:
     sku = await seed_sku_locations_stock(committed_db, "S", {"L1": 10})
-    order_id = await seed_order(committed_db, state=OrderState.ALLOCATED, lines={"S": 3})
+    order_id = await seed_order(
+        committed_db, state=OrderState.ALLOCATED, lines={"S": 3}, allocated={"S": 3}
+    )
     await seed_held_reservation(
         committed_db,
         sku=sku,
@@ -148,7 +152,9 @@ async def test_concurrent_reapers_expire_exactly_once(committed_db: AsyncEngine)
 
 async def test_reaper_versus_cancel_one_effect(committed_db: AsyncEngine) -> None:
     sku = await seed_sku_locations_stock(committed_db, "S", {"L1": 10})
-    order_id = await seed_order(committed_db, state=OrderState.ALLOCATED, lines={"S": 3})
+    order_id = await seed_order(
+        committed_db, state=OrderState.ALLOCATED, lines={"S": 3}, allocated={"S": 3}
+    )
     res_id = await seed_held_reservation(
         committed_db,
         sku=sku,

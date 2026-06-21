@@ -90,3 +90,21 @@ async def test_fake_order_repo_backordered_orders_respects_limit() -> None:
     repo = FakeOrderRepo(backordered=ids)
     assert await repo.backordered_orders(2) == ids[:2]
     assert repo.backordered_calls == [2]
+
+
+async def test_fake_order_repo_remove_allocated_and_mark_backordered() -> None:
+    from uuid import uuid4
+
+    from quartermaster.domain.ids import OrderId, SkuId
+    from tests.unit.fakes import FakeOrderRepo
+
+    oid = OrderId(uuid4())
+    repo = FakeOrderRepo()
+    assert await repo.remove_allocated(oid, SkuId("S"), 3) is True
+    assert await repo.mark_backordered(oid) is True
+    assert repo.removed_allocated == [(oid, SkuId("S"), 3)]
+    assert repo.mark_backordered_calls == [oid]
+
+    rejecting = FakeOrderRepo(remove_allocated_result=False, mark_backordered_result=False)
+    assert await rejecting.remove_allocated(oid, SkuId("S"), 1) is False
+    assert await rejecting.mark_backordered(oid) is False
