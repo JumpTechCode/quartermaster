@@ -178,8 +178,16 @@ class ReceiptResponse(BaseModel):
 
 
 class PutawayRequest(BaseModel):
-    from_location: str = Field(min_length=1)
-    to_location: str = Field(min_length=1)
+    from_location: str = Field(
+        min_length=1, description="The receiving cell the stock is moving from."
+    )
+    to_location: str = Field(
+        min_length=1,
+        description=(
+            "Destination cell. Should be a shelf (pickable) location: allocation only "
+            "reserves from shelves, so stock put away to a non-shelf cell is not allocatable."
+        ),
+    )
 
 
 class PutawayLineOut(BaseModel):
