@@ -83,3 +83,12 @@ def test_reservation_has_due_index() -> None:
     assert "ix_reservation_state_expires_at" in names
     ix = next(ix for ix in reservation.indexes if ix.name == "ix_reservation_state_expires_at")
     assert [c.name for c in ix.columns] == ["state", "expires_at"]
+
+
+def test_orders_has_backorder_sweep_index() -> None:
+    from quartermaster.adapters.postgres.tables import orders
+
+    names = {ix.name for ix in orders.indexes}
+    assert "ix_orders_state_created_at" in names
+    ix = next(ix for ix in orders.indexes if ix.name == "ix_orders_state_created_at")
+    assert [c.name for c in ix.columns] == ["state", "created_at"]

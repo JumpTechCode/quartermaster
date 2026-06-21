@@ -87,6 +87,7 @@ orders = Table(
     Column("created_at", TIMESTAMP(timezone=True), nullable=False),
     CheckConstraint(_enum_check("state", [s.value for s in OrderState]), name="state"),
     CheckConstraint("version >= 1", name="version_positive"),
+    Index("ix_orders_state_created_at", "state", "created_at"),
 )
 
 order_line = Table(
