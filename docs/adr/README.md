@@ -28,6 +28,7 @@ The format follows Michael Nygard's
 - [0017 — Polled worker execution model](0017-worker-execution-model.md)
 - [0018 — Reaper ledger semantics](0018-reaper-ledger-semantics.md)
 - [0019 — Reaper de-allocates the owning order (allocated → backordered)](0019-reaper-deallocates-order.md)
+- [0020 — Translate transient Postgres conflicts to OccConflict at the adapter boundary](0020-translate-transient-conflicts-to-occ.md)
 
 ## Adding a record
 
