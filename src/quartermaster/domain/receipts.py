@@ -16,6 +16,7 @@ from enum import StrEnum
 
 from quartermaster.domain.errors import InvariantViolation
 from quartermaster.domain.ids import OrderId, ReceiptId, SkuId
+from quartermaster.domain.quantities import MAX_QTY
 from quartermaster.domain.state_machines import ReceiptState
 
 
@@ -45,6 +46,11 @@ class ReceiptLine:
             raise InvariantViolation(
                 "receipt line must satisfy 0 <= received <= expected, got "
                 f"expected={self.expected}, received={self.received}"
+            )
+        if self.expected > MAX_QTY:
+            raise InvariantViolation(
+                f"receipt line quantity must not exceed {MAX_QTY} "
+                f"(the 32-bit column ceiling), got expected={self.expected}"
             )
 
     @property

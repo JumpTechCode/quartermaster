@@ -11,10 +11,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from quartermaster.domain.quantities import MAX_QTY
+
 
 class OrderLineInput(BaseModel):
     sku_id: str = Field(min_length=1, max_length=64)
-    qty: int = Field(gt=0)
+    qty: int = Field(gt=0, le=MAX_QTY)
 
 
 class CreateOrderRequest(BaseModel):
@@ -107,7 +109,7 @@ class ErrorResponse(BaseModel):
 
 class ReceiptLineInput(BaseModel):
     sku_id: str = Field(min_length=1, max_length=64)
-    qty: int = Field(gt=0)
+    qty: int = Field(gt=0, le=MAX_QTY)
 
 
 class CreateReceiptRequest(BaseModel):

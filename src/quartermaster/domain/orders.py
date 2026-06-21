@@ -15,6 +15,7 @@ from datetime import datetime
 
 from quartermaster.domain.errors import InvariantViolation
 from quartermaster.domain.ids import OrderId, SkuId
+from quartermaster.domain.quantities import MAX_QTY
 from quartermaster.domain.state_machines import OrderState
 
 
@@ -41,6 +42,11 @@ class OrderLine:
                 "0 <= shipped <= picked <= allocated <= ordered, got "
                 f"ordered={self.ordered}, allocated={self.allocated}, "
                 f"picked={self.picked}, shipped={self.shipped}"
+            )
+        if self.ordered > MAX_QTY:
+            raise InvariantViolation(
+                f"order line quantity must not exceed {MAX_QTY} "
+                f"(the 32-bit column ceiling), got ordered={self.ordered}"
             )
 
     @property

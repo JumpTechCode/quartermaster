@@ -18,6 +18,7 @@ from hypothesis import strategies as st
 from quartermaster.domain.errors import InvariantViolation
 from quartermaster.domain.ids import OrderId, SkuId
 from quartermaster.domain.orders import Order, OrderLine
+from quartermaster.domain.quantities import MAX_QTY as COLUMN_MAX_QTY
 from quartermaster.domain.state_machines import OrderState
 
 MAX_QTY = 10_000
@@ -67,6 +68,16 @@ def test_valid_line_holds_its_quantities() -> None:
 def test_construction_rejects_non_monotonic(ordered, allocated, picked, shipped) -> None:  # type: ignore[no-untyped-def]
     with pytest.raises(InvariantViolation):
         line(ordered, allocated, picked, shipped)
+
+
+def test_construction_rejects_quantity_above_column_max() -> None:
+    with pytest.raises(InvariantViolation):
+        line(ordered=COLUMN_MAX_QTY + 1, allocated=0, picked=0, shipped=0)
+
+
+def test_construction_accepts_quantity_at_column_max() -> None:
+    ln = line(ordered=COLUMN_MAX_QTY, allocated=COLUMN_MAX_QTY, picked=0, shipped=0)
+    assert ln.ordered == COLUMN_MAX_QTY
 
 
 def test_line_is_immutable() -> None:

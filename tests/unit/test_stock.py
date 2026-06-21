@@ -18,6 +18,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from quartermaster.domain.errors import InsufficientStock, InvariantViolation
+from quartermaster.domain.quantities import MAX_QTY as COLUMN_MAX_QTY
 from quartermaster.domain.stock import StockLevel
 
 MAX_QTY = 10_000
@@ -50,6 +51,15 @@ def test_empty_level_is_consistent() -> None:
 def test_construction_rejects_inconsistent_levels(on_hand: int, reserved: int) -> None:
     with pytest.raises(InvariantViolation):
         StockLevel(on_hand=on_hand, reserved=reserved)
+
+
+def test_construction_rejects_on_hand_above_column_max() -> None:
+    with pytest.raises(InvariantViolation):
+        StockLevel(on_hand=COLUMN_MAX_QTY + 1, reserved=0)
+
+
+def test_construction_accepts_on_hand_at_column_max() -> None:
+    assert StockLevel(on_hand=COLUMN_MAX_QTY, reserved=0).on_hand == COLUMN_MAX_QTY
 
 
 def test_level_is_immutable() -> None:

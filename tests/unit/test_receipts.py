@@ -12,6 +12,7 @@ import pytest
 
 from quartermaster.domain.errors import InvariantViolation
 from quartermaster.domain.ids import OrderId, ReceiptId, SkuId
+from quartermaster.domain.quantities import MAX_QTY as COLUMN_MAX_QTY
 from quartermaster.domain.receipts import Receipt, ReceiptKind, ReceiptLine
 from quartermaster.domain.state_machines import ReceiptState
 
@@ -36,6 +37,15 @@ def test_line_holds_its_quantities() -> None:
 def test_line_rejects_out_of_range(expected: int, received: int) -> None:
     with pytest.raises(InvariantViolation):
         rline(expected, received)
+
+
+def test_line_rejects_expected_above_column_max() -> None:
+    with pytest.raises(InvariantViolation):
+        rline(expected=COLUMN_MAX_QTY + 1, received=0)
+
+
+def test_line_accepts_expected_at_column_max() -> None:
+    assert rline(expected=COLUMN_MAX_QTY, received=0).expected == COLUMN_MAX_QTY
 
 
 def test_shortfall_and_completeness() -> None:

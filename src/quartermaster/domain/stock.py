@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from quartermaster.domain.errors import InsufficientStock, InvariantViolation
+from quartermaster.domain.quantities import MAX_QTY
 
 
 def _require_non_negative(qty: int) -> None:
@@ -43,6 +44,10 @@ class StockLevel:
         if self.reserved > self.on_hand:
             raise InvariantViolation(
                 f"reserved ({self.reserved}) must not exceed on_hand ({self.on_hand})"
+            )
+        if self.on_hand > MAX_QTY:
+            raise InvariantViolation(
+                f"on_hand must not exceed {MAX_QTY} (the 32-bit column ceiling), got {self.on_hand}"
             )
 
     @property

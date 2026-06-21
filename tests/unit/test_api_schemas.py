@@ -39,6 +39,21 @@ def test_nonpositive_qty_rejected() -> None:
         CreateOrderRequest(lines=[{"sku_id": "A", "qty": 0}])
 
 
+def test_qty_above_32bit_column_max_rejected() -> None:
+    # 2_147_483_648 == one past the signed 32-bit ceiling the qty columns hold;
+    # without an upper bound it slips past validation and fails at INSERT as a 500.
+    with pytest.raises(ValidationError):
+        CreateOrderRequest(lines=[{"sku_id": "A", "qty": 2_147_483_648}])
+    with pytest.raises(ValidationError):
+        ReceiptLineInput(sku_id="A", qty=2_147_483_648)
+
+
+def test_qty_at_32bit_column_max_accepted() -> None:
+    req = CreateOrderRequest(lines=[{"sku_id": "A", "qty": 2_147_483_647}])
+    assert req.lines[0].qty == 2_147_483_647
+    assert ReceiptLineInput(sku_id="A", qty=2_147_483_647).qty == 2_147_483_647
+
+
 def test_blank_sku_rejected() -> None:
     with pytest.raises(ValidationError):
         CreateOrderRequest(lines=[{"sku_id": "", "qty": 1}])
