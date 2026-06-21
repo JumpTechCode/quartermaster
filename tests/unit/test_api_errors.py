@@ -142,6 +142,11 @@ class _NoopReservationRepo:
     ) -> bool:  # pragma: no cover
         return True
 
+    async def due_for_expiry(
+        self, now: datetime.datetime, limit: int
+    ) -> list[Reservation]:  # pragma: no cover
+        return []
+
 
 class _NoopMovementRepo:
     async def append(self, movement: Movement) -> None:  # pragma: no cover
@@ -199,6 +204,11 @@ class _NoopIdempotencyRepo:
         response: dict[str, object] | None,
     ) -> None:  # pragma: no cover
         pass
+
+    async def delete_expired(  # pragma: no cover
+        self, before: datetime.datetime, limit: int
+    ) -> int:
+        return 0
 
 
 # ---------------------------------------------------------------------------

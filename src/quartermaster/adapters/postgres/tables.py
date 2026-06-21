@@ -152,6 +152,7 @@ reservation = Table(
     ),
     CheckConstraint("qty > 0", name="qty_positive"),
     CheckConstraint(_enum_check("state", [s.value for s in ReservationState]), name="state"),
+    Index("ix_reservation_state_expires_at", "state", "expires_at"),
 )
 
 movement = Table(

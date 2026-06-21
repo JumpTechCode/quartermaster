@@ -17,3 +17,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="QM_")
 
     database_url: str
+    reservation_reaper_interval_s: float = 60.0
+    idempotency_reaper_interval_s: float = 3600.0
+    reaper_batch_size: int = 500
+    idempotency_ttl_hours: int = 24

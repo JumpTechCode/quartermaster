@@ -74,3 +74,12 @@ def test_enum_checks_are_sourced_from_the_domain() -> None:
     ddl = _ddl("orders")
     for state in OrderState:
         assert f"'{state.value}'" in ddl
+
+
+def test_reservation_has_due_index() -> None:
+    from quartermaster.adapters.postgres.tables import reservation
+
+    names = {ix.name for ix in reservation.indexes}
+    assert "ix_reservation_state_expires_at" in names
+    ix = next(ix for ix in reservation.indexes if ix.name == "ix_reservation_state_expires_at")
+    assert [c.name for c in ix.columns] == ["state", "expires_at"]

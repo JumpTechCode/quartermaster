@@ -25,6 +25,8 @@ The format follows Michael Nygard's
 - [0014 — Postgres-early testing with testcontainers](0014-postgres-early-testcontainers.md)
 - [0015 — UUIDv7 for document identifiers, generated app-side](0015-uuidv7-document-ids.md)
 - [0016 — Atomic partial-reserve primitive for greedy allocation](0016-atomic-partial-reserve-primitive.md)
+- [0017 — Polled worker execution model](0017-worker-execution-model.md)
+- [0018 — Reaper ledger semantics](0018-reaper-ledger-semantics.md)
 
 ## Adding a record
 

@@ -6,6 +6,7 @@ guard under READ COMMITTED (design spec §5, §8); the ORM is deliberately unuse
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select, text
@@ -430,6 +431,29 @@ class PgReservationRepo:
         )
         return result.rowcount == 1
 
+    async def due_for_expiry(self, now: datetime, limit: int) -> list[Reservation]:
+        rows = await self._conn.execute(
+            select(reservation)
+            .where(
+                reservation.c.state == ReservationState.HELD.value,
+                reservation.c.expires_at <= now,
+            )
+            .order_by(reservation.c.expires_at)
+            .limit(limit)
+        )
+        return [
+            Reservation(
+                reservation_id=ReservationId(r.reservation_id),
+                order_id=OrderId(r.order_id),
+                sku_id=SkuId(r.sku_id),
+                location_id=LocationId(r.location_id),
+                qty=int(r.qty),
+                state=ReservationState(r.state),
+                expires_at=r.expires_at,
+            )
+            for r in rows
+        ]
+
 
 class PgMovementRepo:
     def __init__(self, conn: AsyncConnection) -> None:
@@ -497,6 +521,23 @@ class PgIdempotencyRepo:
             .where(idempotency_key.c.key == key)
             .values(status=status.value, response=response)
         )
+
+    async def delete_expired(self, before: datetime, limit: int) -> int:
+        result = await self._conn.execute(
+            text(
+                """
+                DELETE FROM idempotency_key
+                 WHERE key IN (
+                     SELECT key FROM idempotency_key
+                      WHERE created_at < :before
+                      ORDER BY created_at
+                      LIMIT :limit
+                 )
+                """
+            ),
+            {"before": before, "limit": limit},
+        )
+        return result.rowcount
 
 
 class PostgresUnitOfWork:

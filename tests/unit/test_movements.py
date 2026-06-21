@@ -50,6 +50,7 @@ def test_movement_types_match_the_spec() -> None:
         "pick",
         "reserve",
         "release",
+        "expire",
     }
 
 
@@ -63,3 +64,9 @@ def test_movement_is_immutable() -> None:
     mv = movement(qty=5)
     with pytest.raises(Exception):  # noqa: B017 - frozen dataclass raises FrozenInstanceError
         mv.qty = 9  # type: ignore[misc]
+
+
+def test_expire_movement_type_exists() -> None:
+    from quartermaster.domain.movements import MovementType
+
+    assert MovementType.EXPIRE.value == "expire"

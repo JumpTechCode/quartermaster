@@ -9,6 +9,7 @@ suite.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 from quartermaster.application.ports import (
@@ -183,11 +184,14 @@ class FakeReservationRepo:
         held: list[Reservation] | None = None,
         *,
         transition_result: bool = True,
+        due: list[Reservation] | None = None,
     ) -> None:
         self.added: list[Reservation] = []
         self.held = held or []
         self.transition_result = transition_result
         self.transitions: list[tuple[ReservationId, ReservationState, ReservationState]] = []
+        self.due = list(due) if due is not None else []
+        self.due_calls: list[tuple[datetime, int]] = []
 
     async def add(self, reservation: Reservation) -> None:
         self.added.append(reservation)
@@ -200,6 +204,10 @@ class FakeReservationRepo:
     ) -> bool:
         self.transitions.append((reservation_id, expected, new))
         return self.transition_result
+
+    async def due_for_expiry(self, now: datetime, limit: int) -> list[Reservation]:
+        self.due_calls.append((now, limit))
+        return list(self.due[:limit])
 
 
 class FakeMovementRepo:
@@ -231,6 +239,7 @@ class FakeIdempotencyRepo:
         self,
         claim_outcome: ClaimOutcome = ClaimOutcome.CLAIMED,
         stored: StoredResponse | None = None,
+        delete_results: list[int] | None = None,
     ) -> None:
         self.claim_outcome = claim_outcome
         self.stored = stored
@@ -238,6 +247,8 @@ class FakeIdempotencyRepo:
         self.finalize_calls: list[
             tuple[IdempotencyKey, IdempotencyStatus, dict[str, Any] | None]
         ] = []
+        self.delete_results = list(delete_results) if delete_results is not None else []
+        self.delete_calls: list[tuple[datetime, int]] = []
 
     async def claim(self, key: IdempotencyKey, fingerprint: str) -> ClaimOutcome:
         self.claim_calls.append((key, fingerprint))
@@ -250,6 +261,10 @@ class FakeIdempotencyRepo:
         self, key: IdempotencyKey, status: IdempotencyStatus, response: dict[str, Any] | None
     ) -> None:
         self.finalize_calls.append((key, status, response))
+
+    async def delete_expired(self, before: datetime, limit: int) -> int:
+        self.delete_calls.append((before, limit))
+        return self.delete_results.pop(0) if self.delete_results else 0
 
 
 class FakeUnitOfWork:

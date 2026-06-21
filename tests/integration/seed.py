@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from quartermaster.adapters.postgres.identifiers import new_order_id
+from quartermaster.adapters.postgres.identifiers import new_order_id, new_reservation_id
 from quartermaster.adapters.postgres.tables import (
     location,
     order_line,
@@ -19,7 +19,7 @@ from quartermaster.adapters.postgres.tables import (
 from quartermaster.adapters.postgres.tables import (
     sku as sku_table,
 )
-from quartermaster.domain.ids import LocationId, OrderId, SkuId
+from quartermaster.domain.ids import LocationId, OrderId, ReservationId, SkuId
 from quartermaster.domain.state_machines import OrderState, ReservationState
 
 
@@ -58,6 +58,41 @@ async def seed_order(engine: AsyncEngine, *, state: OrderState, lines: dict[str,
                 )
             )
     return order_id
+
+
+async def seed_held_reservation(
+    engine: AsyncEngine,
+    *,
+    sku: str,
+    location: str,
+    order_id: OrderId,
+    qty: int,
+    expires_at: datetime,
+) -> ReservationId:
+    """Insert a HELD reservation and raise the matching stock cell's qty_reserved.
+
+    Mirrors the post-allocate state: a held reservation always has a matching
+    reserved quantity on its stock cell, which the reaper later releases.
+    """
+    reservation_id = new_reservation_id()
+    async with engine.begin() as conn:
+        await conn.execute(
+            reservation.insert().values(
+                reservation_id=reservation_id,
+                order_id=order_id,
+                sku_id=sku,
+                location_id=location,
+                qty=qty,
+                state=ReservationState.HELD.value,
+                expires_at=expires_at,
+            )
+        )
+        await conn.execute(
+            stock.update()
+            .where(stock.c.sku_id == sku, stock.c.location_id == location)
+            .values(qty_reserved=stock.c.qty_reserved + qty)
+        )
+    return reservation_id
 
 
 async def seed_sku(engine: AsyncEngine, sku: str) -> SkuId:

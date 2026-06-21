@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Protocol
 
@@ -169,6 +170,10 @@ class ReservationRepo(Protocol):
         """CAS the reservation state; False == 0 rows == already finalized by another actor."""
         ...
 
+    async def due_for_expiry(self, now: datetime, limit: int) -> list[Reservation]:
+        """`held` reservations with ``expires_at <= now``, oldest first, at most ``limit``."""
+        ...
+
 
 class MovementRepo(Protocol):
     async def append(self, movement: Movement) -> None: ...
@@ -190,6 +195,10 @@ class IdempotencyRepo(Protocol):
     async def finalize(
         self, key: IdempotencyKey, status: IdempotencyStatus, response: dict[str, Any] | None
     ) -> None: ...
+
+    async def delete_expired(self, before: datetime, limit: int) -> int:
+        """Delete up to ``limit`` keys created before ``before``; return the count deleted."""
+        ...
 
 
 class UnitOfWork(Protocol):
