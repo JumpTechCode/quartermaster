@@ -19,9 +19,7 @@ def test_settings_database_url_is_required(monkeypatch: pytest.MonkeyPatch) -> N
         Settings()
 
 
-def test_reaper_settings_defaults(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    from quartermaster.config.settings import Settings
-
+def test_reaper_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("QM_DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
     settings = Settings()
     assert settings.reservation_reaper_interval_s == 60.0

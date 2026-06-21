@@ -14,7 +14,7 @@ import asyncio
 import logging
 import signal
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 
 from fastapi import FastAPI
@@ -67,10 +67,8 @@ async def run_workers() -> None:
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        try:  # noqa: SIM105
+        with suppress(NotImplementedError):  # pragma: no cover - platform without signal support
             loop.add_signal_handler(sig, stop.set)
-        except NotImplementedError:  # pragma: no cover - platform without signal support
-            pass
 
     async def reservation_tick() -> None:
         await reap_reservations(
