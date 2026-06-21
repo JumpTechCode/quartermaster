@@ -35,6 +35,7 @@ class MovementType(StrEnum):
     PICK = "pick"
     RESERVE = "reserve"
     RELEASE = "release"
+    EXPIRE = "expire"
 
 
 @dataclass(frozen=True)
