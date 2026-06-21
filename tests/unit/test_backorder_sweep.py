@@ -28,14 +28,6 @@ def _line(order_id: OrderId, ordered: int) -> OrderLine:
     )
 
 
-def _seams() -> dict[str, object]:
-    return {
-        "now": lambda: _NOW,
-        "new_reservation_id": lambda: ReservationId(uuid4()),
-        "new_movement_id": lambda: MovementId(uuid4()),
-    }
-
-
 async def test_satisfiable_order_is_reallocated() -> None:
     order_id, _, _ = _ids()
     uow = FakeUnitOfWork(
@@ -44,8 +36,12 @@ async def test_satisfiable_order_is_reallocated() -> None:
         ),
         stock=FakeStockRepo(cells={(SkuId("S"), LocationId("L1")): 5}),
     )
-    run = await sweep_backorders(  # type: ignore[arg-type]
-        fake_factory(uow), batch_size=100, **_seams()
+    run = await sweep_backorders(
+        fake_factory(uow),
+        now=lambda: _NOW,
+        new_reservation_id=lambda: ReservationId(uuid4()),
+        new_movement_id=lambda: MovementId(uuid4()),
+        batch_size=100,
     )
 
     assert run.scanned == 1 and run.allocated == 1
@@ -60,8 +56,12 @@ async def test_short_stock_stays_backordered() -> None:
         ),
         stock=FakeStockRepo(cells={(SkuId("S"), LocationId("L1")): 2}),
     )
-    run = await sweep_backorders(  # type: ignore[arg-type]
-        fake_factory(uow), batch_size=100, **_seams()
+    run = await sweep_backorders(
+        fake_factory(uow),
+        now=lambda: _NOW,
+        new_reservation_id=lambda: ReservationId(uuid4()),
+        new_movement_id=lambda: MovementId(uuid4()),
+        batch_size=100,
     )
 
     assert run.scanned == 1 and run.allocated == 0
@@ -75,8 +75,12 @@ async def test_order_changed_under_sweep_is_counted_as_error() -> None:
         orders=FakeOrderRepo(order=changed, lines=[_line(order_id, 5)], backordered=[order_id]),
         stock=FakeStockRepo(cells={(SkuId("S"), LocationId("L1")): 5}),
     )
-    run = await sweep_backorders(  # type: ignore[arg-type]
-        fake_factory(uow), batch_size=100, **_seams()
+    run = await sweep_backorders(
+        fake_factory(uow),
+        now=lambda: _NOW,
+        new_reservation_id=lambda: ReservationId(uuid4()),
+        new_movement_id=lambda: MovementId(uuid4()),
+        batch_size=100,
     )
 
     # allocate raised IllegalTransition
@@ -87,7 +91,11 @@ async def test_order_changed_under_sweep_is_counted_as_error() -> None:
 
 async def test_no_backordered_orders() -> None:
     uow = FakeUnitOfWork(orders=FakeOrderRepo(backordered=[]))
-    run = await sweep_backorders(  # type: ignore[arg-type]
-        fake_factory(uow), batch_size=100, **_seams()
+    run = await sweep_backorders(
+        fake_factory(uow),
+        now=lambda: _NOW,
+        new_reservation_id=lambda: ReservationId(uuid4()),
+        new_movement_id=lambda: MovementId(uuid4()),
+        batch_size=100,
     )
     assert run == run.__class__(scanned=0, allocated=0, still_backordered=0, errors=0)
