@@ -189,6 +189,7 @@ class ReceiptResponse(BaseModel):
     kind: str
     state: str
     version: int
+    origin_order_id: UUID | None = None
     lines: list[ReceiptLineView]
 
 

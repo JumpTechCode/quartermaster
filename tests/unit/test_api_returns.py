@@ -10,7 +10,8 @@ import httpx
 from quartermaster.api.app import create_app
 from quartermaster.domain.ids import OrderId, ReceiptId, SkuId
 from quartermaster.domain.orders import Order, OrderLine
-from quartermaster.domain.state_machines import OrderState
+from quartermaster.domain.receipts import Receipt, ReceiptKind, ReceiptLine
+from quartermaster.domain.state_machines import OrderState, ReceiptState
 from tests.unit.api_helpers import make_deps
 from tests.unit.fakes import (
     FakeIdempotencyRepo,
@@ -107,3 +108,33 @@ async def test_create_return_missing_idempotency_key_400() -> None:
         )
     assert resp.status_code == 400
     assert resp.json()["error"] == "missing_idempotency_key"
+
+
+async def test_get_receipt_includes_origin_order_id() -> None:
+    rec = Receipt(
+        ReceiptId(_RCID), ReceiptKind.CUSTOMER_RMA, ReceiptState.EXPECTED, 1, _FIXED, OrderId(_OID)
+    )
+    line = ReceiptLine(ReceiptId(_RCID), SkuId("A"), 3, 0)
+    uow = FakeUnitOfWork(receipts=FakeReceiptRepo(receipt=rec, lines=[line]))
+    async with _client(uow) as client:
+        resp = await client.get(f"/receipts/{_RCID}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["kind"] == "customer_rma"
+    assert body["origin_order_id"] == str(_OID)
+
+
+async def test_get_supplier_receipt_origin_is_null() -> None:
+    rec = Receipt(
+        ReceiptId(_RCID),
+        ReceiptKind.SUPPLIER_RECEIPT,
+        ReceiptState.EXPECTED,
+        1,
+        _FIXED,
+        None,
+    )
+    uow = FakeUnitOfWork(receipts=FakeReceiptRepo(receipt=rec, lines=[]))
+    async with _client(uow) as client:
+        resp = await client.get(f"/receipts/{_RCID}")
+    assert resp.status_code == 200
+    assert resp.json()["origin_order_id"] is None

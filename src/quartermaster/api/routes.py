@@ -214,6 +214,7 @@ def build_router(deps: Deps) -> APIRouter:
             kind=view.kind.value,
             state=view.state.value,
             version=view.version,
+            origin_order_id=view.origin_order_id,
             lines=[
                 ReceiptLineView(sku_id=line.sku_id, expected=line.expected, received=line.received)
                 for line in view.lines
