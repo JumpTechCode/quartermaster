@@ -33,11 +33,15 @@ async def ship(uow: UnitOfWork, command: ShipCommand) -> ShipResult:
     shipped: list[ShippedLine] = []
     for line in lines:
         to_ship = line.outstanding_to_ship
+        # Report what *this* command shipped (the outstanding picked-but-unshipped
+        # delta), not the cumulative picked quantity. A fully backordered line
+        # (picked == 0) ships nothing and is omitted, so the result lines mirror
+        # the other handlers: what the command did, not the order's full line set.
         if to_ship == 0:
             continue
         if not await uow.orders.add_shipped(command.order_id, line.sku_id, to_ship):
             raise OccConflict(f"order {command.order_id} line {line.sku_id} changed under ship")
-        shipped.append(ShippedLine(line.sku_id, line.picked))
+        shipped.append(ShippedLine(line.sku_id, to_ship))
 
     return ShipResult(order_id=command.order_id, state=OrderState.SHIPPED, lines=tuple(shipped))
 
