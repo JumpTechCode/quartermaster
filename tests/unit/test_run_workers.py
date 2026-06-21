@@ -8,7 +8,7 @@ import quartermaster.app as app_module
 from quartermaster.app import run_workers
 
 
-async def test_run_workers_schedules_both_reapers(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_run_workers_schedules_all_loops(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("QM_DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
     intervals: list[float] = []
 
@@ -19,10 +19,10 @@ async def test_run_workers_schedules_both_reapers(monkeypatch) -> None:  # type:
         sleep: object = None,
         stop: object = None,
     ) -> None:
-        intervals.append(interval)  # record wiring; never call tick (would hit DB)
+        intervals.append(interval)
 
     monkeypatch.setattr(app_module, "run_forever", fake_run_forever)
 
     await run_workers()
 
-    assert sorted(intervals) == [60.0, 3600.0]
+    assert sorted(intervals) == [30.0, 60.0, 3600.0]

@@ -31,6 +31,7 @@ from quartermaster.api.app import create_app
 from quartermaster.api.deps import Deps
 from quartermaster.application.clock import system_clock
 from quartermaster.config.settings import Settings
+from quartermaster.workers.backorder_sweep import sweep_backorders
 from quartermaster.workers.idempotency_reaper import reap_idempotency_keys
 from quartermaster.workers.loop import run_forever
 from quartermaster.workers.reservation_reaper import reap_reservations
@@ -86,6 +87,15 @@ async def run_workers() -> None:
             batch_size=settings.reaper_batch_size,
         )
 
+    async def sweep_tick() -> None:
+        await sweep_backorders(
+            factory,
+            now=system_clock,
+            new_reservation_id=new_reservation_id,
+            new_movement_id=new_movement_id,
+            batch_size=settings.reaper_batch_size,
+        )
+
     try:
         await asyncio.gather(
             run_forever(
@@ -96,6 +106,11 @@ async def run_workers() -> None:
             run_forever(
                 idempotency_tick,
                 interval=settings.idempotency_reaper_interval_s,
+                stop=stop,
+            ),
+            run_forever(
+                sweep_tick,
+                interval=settings.backorder_sweep_interval_s,
                 stop=stop,
             ),
         )
