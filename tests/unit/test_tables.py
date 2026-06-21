@@ -92,3 +92,15 @@ def test_orders_has_backorder_sweep_index() -> None:
     assert "ix_orders_state_created_at" in names
     ix = next(ix for ix in orders.indexes if ix.name == "ix_orders_state_created_at")
     assert [c.name for c in ix.columns] == ["state", "created_at"]
+
+
+def test_idempotency_key_has_created_at_index() -> None:
+    # The TTL reaper deletes by `created_at < cutoff ORDER BY created_at LIMIT n`;
+    # without this index that scan degrades the very table whose unique-index
+    # INSERT is the command-path serialization point.
+    from quartermaster.adapters.postgres.tables import idempotency_key
+
+    names = {ix.name for ix in idempotency_key.indexes}
+    assert "ix_idempotency_key_created_at" in names
+    ix = next(ix for ix in idempotency_key.indexes if ix.name == "ix_idempotency_key_created_at")
+    assert [c.name for c in ix.columns] == ["created_at"]
