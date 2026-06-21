@@ -16,10 +16,13 @@ from quartermaster.application.ports import (
     CatalogRepo,
     ClaimOutcome,
     IdempotencyRepo,
+    LineQuantities,
     MovementRepo,
+    MovementTotal,
     OrderRepo,
     ReceiptRepo,
     ReservationRepo,
+    StockCell,
     StockRepo,
     StoredResponse,
     UnitOfWork,
@@ -43,9 +46,15 @@ from quartermaster.domain.state_machines import OrderState, ReceiptState, Reserv
 
 
 class FakeStockRepo:
-    def __init__(self, cells: dict[tuple[SkuId, LocationId], int] | None = None) -> None:
+    def __init__(
+        self,
+        cells: dict[tuple[SkuId, LocationId], int] | None = None,
+        *,
+        all_cells: list[StockCell] | None = None,
+    ) -> None:
         # cells maps (sku, location) -> available units
         self.cells = cells or {}
+        self._all_cells = list(all_cells) if all_cells is not None else []
         self.reserve_calls: list[tuple[SkuId, LocationId, int]] = []
         self.consume_result = True
         self.consume_calls: list[tuple[SkuId, LocationId, int]] = []
@@ -82,6 +91,9 @@ class FakeStockRepo:
         self.remove_calls.append((sku, location, qty))
         return self.remove_result
 
+    async def all_cells(self) -> list[StockCell]:
+        return list(self._all_cells)
+
 
 class FakeOrderRepo:
     def __init__(
@@ -96,6 +108,8 @@ class FakeOrderRepo:
         remove_allocated_result: bool = True,
         mark_backordered_result: bool = True,
         backordered: list[OrderId] | None = None,
+        shipped_totals: dict[SkuId, int] | None = None,
+        monotonic_violations: list[LineQuantities] | None = None,
     ) -> None:
         self.order = order
         self.lines = lines or []
@@ -114,6 +128,10 @@ class FakeOrderRepo:
         self.inserted: list[tuple[Order, list[OrderLine]]] = []
         self.backordered = list(backordered) if backordered is not None else []
         self.backordered_calls: list[int] = []
+        self.shipped_totals = dict(shipped_totals) if shipped_totals is not None else {}
+        self.monotonic_violations = (
+            list(monotonic_violations) if monotonic_violations is not None else []
+        )
 
     async def get(self, order_id: OrderId) -> Order | None:
         return self.order
@@ -157,6 +175,12 @@ class FakeOrderRepo:
     async def backordered_orders(self, limit: int) -> list[OrderId]:
         self.backordered_calls.append(limit)
         return list(self.backordered[:limit])
+
+    async def shipped_by_sku(self) -> dict[SkuId, int]:
+        return dict(self.shipped_totals)
+
+    async def lines_breaking_monotonic(self) -> list[LineQuantities]:
+        return list(self.monotonic_violations)
 
 
 class FakeReceiptRepo:
@@ -233,11 +257,15 @@ class FakeReservationRepo:
 
 
 class FakeMovementRepo:
-    def __init__(self) -> None:
+    def __init__(self, totals: list[MovementTotal] | None = None) -> None:
         self.appended: list[Movement] = []
+        self._totals = list(totals) if totals is not None else []
 
     async def append(self, movement: Movement) -> None:
         self.appended.append(movement)
+
+    async def aggregate(self) -> list[MovementTotal]:
+        return list(self._totals)
 
 
 class FakeCatalogRepo:

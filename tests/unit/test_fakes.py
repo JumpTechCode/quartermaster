@@ -5,12 +5,26 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from quartermaster.application.ports import ClaimOutcome, UnitOfWork
+from quartermaster.application.ports import (
+    ClaimOutcome,
+    LineQuantities,
+    MovementTotal,
+    StockCell,
+    UnitOfWork,
+)
 from quartermaster.domain.catalog import LocationKind
-from quartermaster.domain.ids import LocationId, ReceiptId, SkuId
+from quartermaster.domain.ids import LocationId, OrderId, ReceiptId, SkuId
+from quartermaster.domain.movements import MovementType
 from quartermaster.domain.receipts import Receipt, ReceiptKind, ReceiptLine
 from quartermaster.domain.state_machines import ReceiptState
-from tests.unit.fakes import FakeCatalogRepo, FakeReceiptRepo, FakeStockRepo, FakeUnitOfWork
+from tests.unit.fakes import (
+    FakeCatalogRepo,
+    FakeMovementRepo,
+    FakeOrderRepo,
+    FakeReceiptRepo,
+    FakeStockRepo,
+    FakeUnitOfWork,
+)
 
 _RID = ReceiptId(UUID("00000000-0000-7000-8000-000000000005"))
 
@@ -115,3 +129,39 @@ async def test_fake_order_repo_remove_allocated_and_mark_backordered() -> None:
     rejecting = FakeOrderRepo(remove_allocated_result=False, mark_backordered_result=False)
     assert await rejecting.remove_allocated(oid, SkuId("S"), 1) is False
     assert await rejecting.mark_backordered(oid) is False
+
+
+async def test_fake_stock_all_cells_returns_canned() -> None:
+    cell = StockCell(sku_id=SkuId("S"), location_id=LocationId("A1"), on_hand=5, reserved=2)
+    repo = FakeStockRepo(all_cells=[cell])
+    assert await repo.all_cells() == [cell]
+
+
+async def test_fake_stock_all_cells_defaults_empty() -> None:
+    assert await FakeStockRepo().all_cells() == []
+
+
+async def test_fake_movement_aggregate_returns_canned() -> None:
+    total = MovementTotal(
+        type=MovementType.RECEIVE,
+        sku_id=SkuId("S"),
+        from_location=None,
+        to_location=LocationId("A1"),
+        total_qty=10,
+    )
+    repo = FakeMovementRepo(totals=[total])
+    assert await repo.aggregate() == [total]
+
+
+async def test_fake_order_shipped_by_sku_and_violations() -> None:
+    bad = LineQuantities(
+        order_id=OrderId(UUID("00000000-0000-7000-8000-000000000001")),
+        sku_id=SkuId("S"),
+        ordered=5,
+        allocated=5,
+        picked=5,
+        shipped=6,
+    )
+    repo = FakeOrderRepo(shipped_totals={SkuId("S"): 4}, monotonic_violations=[bad])
+    assert await repo.shipped_by_sku() == {SkuId("S"): 4}
+    assert await repo.lines_breaking_monotonic() == [bad]

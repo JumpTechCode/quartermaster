@@ -24,7 +24,7 @@ from quartermaster.domain.ids import (
     ReservationId,
     SkuId,
 )
-from quartermaster.domain.movements import Movement
+from quartermaster.domain.movements import Movement, MovementType
 from quartermaster.domain.orders import Order, OrderLine
 from quartermaster.domain.receipts import Receipt, ReceiptLine
 from quartermaster.domain.reservations import Reservation
@@ -45,6 +45,44 @@ class StoredResponse:
     command_fingerprint: str
     status: IdempotencyStatus
     response: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class MovementTotal:
+    """Ledger movements summed by (type, sku, from_location, to_location).
+
+    The offline oracle folds these into per-cell on-hand and reserved balances
+    via the type->effect mapping (design spec §7); the database does only the
+    GROUP BY totalling.
+    """
+
+    type: MovementType
+    sku_id: SkuId
+    from_location: LocationId | None
+    to_location: LocationId | None
+    total_qty: int
+
+
+@dataclass(frozen=True)
+class StockCell:
+    """A live stock row: on-hand and reserved at one (sku, location)."""
+
+    sku_id: SkuId
+    location_id: LocationId
+    on_hand: int
+    reserved: int
+
+
+@dataclass(frozen=True)
+class LineQuantities:
+    """An order line's four quantity counters, for the oracle's state-integrity check."""
+
+    order_id: OrderId
+    sku_id: SkuId
+    ordered: int
+    allocated: int
+    picked: int
+    shipped: int
 
 
 class StockRepo(Protocol):
@@ -87,6 +125,10 @@ class StockRepo(Protocol):
         Only unreserved on-hand can move, so a relocation can never drop on-hand below
         reserved. Returns True if the row was updated, False if the guard rejected the write.
         """
+        ...
+
+    async def all_cells(self) -> list[StockCell]:
+        """Every stock row as (sku, location, on_hand, reserved). Read-only; offline oracle."""
         ...
 
 
@@ -152,6 +194,14 @@ class OrderRepo(Protocol):
         """Backordered order ids, oldest first (FIFO by created_at), at most ``limit``."""
         ...
 
+    async def shipped_by_sku(self) -> dict[SkuId, int]:
+        """Total shipped_qty per sku across all order lines. Read-only oracle."""
+        ...
+
+    async def lines_breaking_monotonic(self) -> list[LineQuantities]:
+        """Order lines violating 0 <= shipped <= picked <= allocated <= ordered (normally empty)."""
+        ...
+
 
 class ReceiptRepo(Protocol):
     async def get(self, receipt_id: ReceiptId) -> Receipt | None: ...
@@ -199,6 +249,10 @@ class ReservationRepo(Protocol):
 
 class MovementRepo(Protocol):
     async def append(self, movement: Movement) -> None: ...
+
+    async def aggregate(self) -> list[MovementTotal]:
+        """Ledger movements summed by (type, sku, from_location, to_location). Read-only oracle."""
+        ...
 
 
 class CatalogRepo(Protocol):

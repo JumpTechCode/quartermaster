@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -31,10 +31,13 @@ from quartermaster.application.ports import (
     CatalogRepo,
     ClaimOutcome,
     IdempotencyRepo,
+    LineQuantities,
     MovementRepo,
+    MovementTotal,
     OrderRepo,
     ReceiptRepo,
     ReservationRepo,
+    StockCell,
     StockRepo,
     StoredResponse,
     UnitOfWork,
@@ -50,7 +53,7 @@ from quartermaster.domain.ids import (
     ReservationId,
     SkuId,
 )
-from quartermaster.domain.movements import Movement
+from quartermaster.domain.movements import Movement, MovementType
 from quartermaster.domain.orders import Order, OrderLine
 from quartermaster.domain.receipts import Receipt, ReceiptKind, ReceiptLine
 from quartermaster.domain.reservations import Reservation
@@ -149,6 +152,25 @@ class PgStockRepo:
             .values(qty_on_hand=stock.c.qty_on_hand - qty)
         )
         return result.rowcount == 1
+
+    async def all_cells(self) -> list[StockCell]:
+        rows = await self._conn.execute(
+            select(
+                stock.c.sku_id,
+                stock.c.location_id,
+                stock.c.qty_on_hand,
+                stock.c.qty_reserved,
+            )
+        )
+        return [
+            StockCell(
+                sku_id=SkuId(r.sku_id),
+                location_id=LocationId(r.location_id),
+                on_hand=int(r.qty_on_hand),
+                reserved=int(r.qty_reserved),
+            )
+            for r in rows
+        ]
 
 
 class PgOrderRepo:
@@ -300,6 +322,34 @@ class PgOrderRepo:
             .limit(limit)
         )
         return [OrderId(r.order_id) for r in rows]
+
+    async def shipped_by_sku(self) -> dict[SkuId, int]:
+        total = func.sum(order_line.c.shipped_qty).label("total_shipped")
+        rows = await self._conn.execute(
+            select(order_line.c.sku_id, total).group_by(order_line.c.sku_id)
+        )
+        return {SkuId(r.sku_id): int(r.total_shipped) for r in rows}
+
+    async def lines_breaking_monotonic(self) -> list[LineQuantities]:
+        c = order_line.c
+        monotonic = (
+            (c.shipped_qty >= 0)
+            & (c.shipped_qty <= c.picked_qty)
+            & (c.picked_qty <= c.allocated_qty)
+            & (c.allocated_qty <= c.ordered_qty)
+        )
+        rows = await self._conn.execute(select(order_line).where(~monotonic))
+        return [
+            LineQuantities(
+                order_id=OrderId(r.order_id),
+                sku_id=SkuId(r.sku_id),
+                ordered=int(r.ordered_qty),
+                allocated=int(r.allocated_qty),
+                picked=int(r.picked_qty),
+                shipped=int(r.shipped_qty),
+            )
+            for r in rows
+        ]
 
 
 class PgReceiptRepo:
@@ -505,6 +555,33 @@ class PgMovementRepo:
                 command_id=mv.command_id,
             )
         )
+
+    async def aggregate(self) -> list[MovementTotal]:
+        total = func.sum(movement.c.qty).label("total_qty")
+        rows = await self._conn.execute(
+            select(
+                movement.c.type,
+                movement.c.sku_id,
+                movement.c.from_location,
+                movement.c.to_location,
+                total,
+            ).group_by(
+                movement.c.type,
+                movement.c.sku_id,
+                movement.c.from_location,
+                movement.c.to_location,
+            )
+        )
+        return [
+            MovementTotal(
+                type=MovementType(r.type),
+                sku_id=SkuId(r.sku_id),
+                from_location=LocationId(r.from_location) if r.from_location is not None else None,
+                to_location=LocationId(r.to_location) if r.to_location is not None else None,
+                total_qty=int(r.total_qty),
+            )
+            for r in rows
+        ]
 
 
 class PgIdempotencyRepo:

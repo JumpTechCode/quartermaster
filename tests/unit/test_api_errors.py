@@ -25,10 +25,13 @@ from quartermaster.application.ports import (
     CatalogRepo,
     ClaimOutcome,
     IdempotencyRepo,
+    LineQuantities,
     MovementRepo,
+    MovementTotal,
     OrderRepo,
     ReceiptRepo,
     ReservationRepo,
+    StockCell,
     StockRepo,
     StoredResponse,
     UnitOfWork,
@@ -88,6 +91,9 @@ class _NoopStockRepo:
     ) -> bool:  # pragma: no cover
         return True
 
+    async def all_cells(self) -> list[StockCell]:  # pragma: no cover
+        return []
+
 
 class _BoomOrderRepo:
     """An OrderRepo stub whose every method raises an unmapped RuntimeError."""
@@ -138,6 +144,12 @@ class _BoomOrderRepo:
     async def backordered_orders(self, limit: int) -> list[OrderId]:  # pragma: no cover
         raise RuntimeError("database on fire")
 
+    async def shipped_by_sku(self) -> dict[SkuId, int]:  # pragma: no cover
+        raise RuntimeError("database on fire")
+
+    async def lines_breaking_monotonic(self) -> list[LineQuantities]:  # pragma: no cover
+        raise RuntimeError("database on fire")
+
 
 class _NoopReservationRepo:
     async def add(self, reservation: Reservation) -> None:  # pragma: no cover
@@ -163,6 +175,9 @@ class _NoopReservationRepo:
 class _NoopMovementRepo:
     async def append(self, movement: Movement) -> None:  # pragma: no cover
         pass
+
+    async def aggregate(self) -> list[MovementTotal]:  # pragma: no cover
+        return []
 
 
 class _NoopReceiptRepo:
