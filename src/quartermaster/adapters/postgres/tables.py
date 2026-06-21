@@ -182,4 +182,9 @@ idempotency_key = Table(
     Column("response", JSONB, nullable=True),
     Column("created_at", TIMESTAMP(timezone=True), nullable=False),
     CheckConstraint(_enum_check("status", [s.value for s in IdempotencyStatus]), name="status"),
+    # The TTL reaper deletes keys past a 24h cutoff
+    # (`WHERE created_at < :before ORDER BY created_at LIMIT :n`); index it so that
+    # sweep is a range scan, not a seq scan over the table whose unique-index
+    # INSERT is the command-path serialization point (design §5.5).
+    Index("ix_idempotency_key_created_at", "created_at"),
 )
