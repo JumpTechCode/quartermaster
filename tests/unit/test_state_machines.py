@@ -47,6 +47,7 @@ LEGAL_ORDER_TRANSITIONS: set[tuple[OrderState, OrderState]] = {
     (OrderState.CREATED, OrderState.CANCELLED),
     (OrderState.ALLOCATED, OrderState.PICKING),
     (OrderState.ALLOCATED, OrderState.CANCELLED),
+    (OrderState.ALLOCATED, OrderState.BACKORDERED),
     (OrderState.BACKORDERED, OrderState.ALLOCATED),
     (OrderState.BACKORDERED, OrderState.CANCELLED),
     # cancel is release-only and stops here: created/allocated/backordered are

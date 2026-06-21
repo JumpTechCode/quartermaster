@@ -92,6 +92,8 @@ class FakeOrderRepo:
         add_allocated_result: bool = True,
         add_picked_result: bool = True,
         add_shipped_result: bool = True,
+        remove_allocated_result: bool = True,
+        mark_backordered_result: bool = True,
         backordered: list[OrderId] | None = None,
     ) -> None:
         self.order = order
@@ -100,10 +102,14 @@ class FakeOrderRepo:
         self.add_allocated_result = add_allocated_result
         self.add_picked_result = add_picked_result
         self.add_shipped_result = add_shipped_result
+        self.remove_allocated_result = remove_allocated_result
+        self.mark_backordered_result = mark_backordered_result
         self.cas_calls: list[tuple[OrderId, OrderState, int, OrderState]] = []
         self.allocated: list[tuple[OrderId, SkuId, int]] = []
         self.picked: list[tuple[OrderId, SkuId, int]] = []
         self.shipped: list[tuple[OrderId, SkuId, int]] = []
+        self.removed_allocated: list[tuple[OrderId, SkuId, int]] = []
+        self.mark_backordered_calls: list[OrderId] = []
         self.inserted: list[tuple[Order, list[OrderLine]]] = []
         self.backordered = list(backordered) if backordered is not None else []
         self.backordered_calls: list[int] = []
@@ -127,6 +133,14 @@ class FakeOrderRepo:
     async def add_allocated(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
         self.allocated.append((order_id, sku_id, qty))
         return self.add_allocated_result
+
+    async def remove_allocated(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        self.removed_allocated.append((order_id, sku_id, qty))
+        return self.remove_allocated_result
+
+    async def mark_backordered(self, order_id: OrderId) -> bool:
+        self.mark_backordered_calls.append(order_id)
+        return self.mark_backordered_result
 
     async def add_picked(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
         self.picked.append((order_id, sku_id, qty))

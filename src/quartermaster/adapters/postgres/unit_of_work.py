@@ -216,6 +216,29 @@ class PgOrderRepo:
         )
         return result.rowcount == 1
 
+    async def remove_allocated(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        result = await self._conn.execute(
+            order_line.update()
+            .where(
+                order_line.c.order_id == order_id,
+                order_line.c.sku_id == sku_id,
+                order_line.c.allocated_qty - qty >= order_line.c.picked_qty,
+            )
+            .values(allocated_qty=order_line.c.allocated_qty - qty)
+        )
+        return result.rowcount == 1
+
+    async def mark_backordered(self, order_id: OrderId) -> bool:
+        result = await self._conn.execute(
+            orders.update()
+            .where(
+                orders.c.order_id == order_id,
+                orders.c.state == OrderState.ALLOCATED.value,
+            )
+            .values(state=OrderState.BACKORDERED.value, version=orders.c.version + 1)
+        )
+        return result.rowcount == 1
+
     async def add_picked(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
         result = await self._conn.execute(
             order_line.update()

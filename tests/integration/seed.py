@@ -42,9 +42,17 @@ async def seed_order(
     *,
     state: OrderState,
     lines: dict[str, int],
+    allocated: dict[str, int] | None = None,
+    picked: dict[str, int] | None = None,
     created_at: datetime | None = None,
 ) -> OrderId:
-    """Insert an order header in ``state`` with the given sku -> ordered_qty lines."""
+    """Insert an order header in ``state`` with the given sku -> ordered_qty lines.
+
+    ``allocated``/``picked`` set the matching per-line counters (default 0), so a
+    seeded order can mirror a real post-allocate / post-pick state.
+    """
+    allocated = allocated or {}
+    picked = picked or {}
     order_id = new_order_id()
     when = created_at if created_at is not None else datetime.now(UTC)
     async with engine.begin() as conn:
@@ -57,8 +65,8 @@ async def seed_order(
                     order_id=order_id,
                     sku_id=sku,
                     ordered_qty=ordered,
-                    allocated_qty=0,
-                    picked_qty=0,
+                    allocated_qty=allocated.get(sku, 0),
+                    picked_qty=picked.get(sku, 0),
                     shipped_qty=0,
                 )
             )

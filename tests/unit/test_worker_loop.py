@@ -10,8 +10,9 @@ from quartermaster.workers.loop import ReaperRun, run_forever
 
 
 def test_reaper_run_defaults() -> None:
-    assert ReaperRun() == ReaperRun(scanned=0, acted=0, errors=0)
+    assert ReaperRun() == ReaperRun(scanned=0, acted=0, reopened=0, errors=0)
     assert ReaperRun(scanned=3, acted=2, errors=1).acted == 2
+    assert ReaperRun(reopened=2).reopened == 2
 
 
 async def test_run_forever_runs_until_stop() -> None:

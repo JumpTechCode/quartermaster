@@ -112,7 +112,13 @@ ORDER_MACHINE: StateMachine[OrderState] = StateMachine(
         OrderState.CREATED: frozenset(
             {OrderState.ALLOCATED, OrderState.BACKORDERED, OrderState.CANCELLED}
         ),
-        OrderState.ALLOCATED: frozenset({OrderState.PICKING, OrderState.CANCELLED}),
+        OrderState.ALLOCATED: frozenset(
+            {OrderState.PICKING, OrderState.CANCELLED, OrderState.BACKORDERED}
+        ),
+        # allocated -> backordered is produced ONLY by the reservation reaper:
+        # when a held reservation expires it lowers the line's allocated_qty and
+        # re-opens a still-allocated order so the backorder sweep re-allocates the
+        # freed stock (spec §4 "freed stock -> sweep"; ADR-0019). No command emits it.
         OrderState.BACKORDERED: frozenset({OrderState.ALLOCATED, OrderState.CANCELLED}),
         # cancel is release-only: legal only while reservations are still held
         # (created/allocated/backordered). From picking onward stock has left the
