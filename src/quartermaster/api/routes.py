@@ -55,7 +55,6 @@ from quartermaster.application.queries import load_order, load_receipt
 from quartermaster.domain.errors import OrderNotFound, ReceiptNotFound
 from quartermaster.domain.ids import IdempotencyKey, LocationId, OrderId, ReceiptId, SkuId
 
-
 _MAX_IDEMPOTENCY_KEY_LENGTH = 256
 
 
