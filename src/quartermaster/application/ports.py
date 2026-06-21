@@ -110,6 +110,23 @@ class OrderRepo(Protocol):
         """
         ...
 
+    async def remove_allocated(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
+        """Decrement allocated_qty by qty only if allocated_qty - qty >= picked_qty.
+
+        Returns True if the row was updated, False if the guard rejected the write.
+        The reservation reaper calls this when expiring a held reservation; a False
+        return means the order line and the reservation ledger disagree (corruption).
+        """
+        ...
+
+    async def mark_backordered(self, order_id: OrderId) -> bool:
+        """CAS the order header allocated -> backordered (state-only; the WHERE is the guard).
+
+        Bumps version. Returns True if the order was allocated and is now backordered,
+        False if it was not allocated (already moved on, or already backordered).
+        """
+        ...
+
     async def add_picked(self, order_id: OrderId, sku_id: SkuId, qty: int) -> bool:
         """Increment picked_qty by qty only if picked_qty + qty <= allocated_qty.
 

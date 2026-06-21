@@ -111,6 +111,14 @@ class _BoomOrderRepo:
     ) -> bool:  # pragma: no cover
         raise RuntimeError("database on fire")
 
+    async def remove_allocated(
+        self, order_id: OrderId, sku_id: SkuId, qty: int
+    ) -> bool:  # pragma: no cover
+        raise RuntimeError("database on fire")
+
+    async def mark_backordered(self, order_id: OrderId) -> bool:  # pragma: no cover
+        raise RuntimeError("database on fire")
+
     async def add_picked(
         self, order_id: OrderId, sku_id: SkuId, qty: int
     ) -> bool:  # pragma: no cover
