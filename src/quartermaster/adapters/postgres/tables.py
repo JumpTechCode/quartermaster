@@ -171,6 +171,10 @@ movement = Table(
     CheckConstraint("qty > 0", name="qty_positive"),
     CheckConstraint(_enum_check("type", [t.value for t in MovementType]), name="type"),
     Index("ix_movement_sku_id_ts", "sku_id", "ts"),
+    # No uniqueness by design (ADR-0021): a command appends many movements and
+    # pick/cancel can legitimately emit rows identical on every business column,
+    # so append-once is enforced upstream by the idempotency layer + the document
+    # state-CAS gates, never by a storage constraint here.
 )
 
 idempotency_key = Table(

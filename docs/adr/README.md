@@ -29,6 +29,7 @@ The format follows Michael Nygard's
 - [0018 — Reaper ledger semantics](0018-reaper-ledger-semantics.md)
 - [0019 — Reaper de-allocates the owning order (allocated → backordered)](0019-reaper-deallocates-order.md)
 - [0020 — Translate transient Postgres conflicts to OccConflict at the adapter boundary](0020-translate-transient-conflicts-to-occ.md)
+- [0021 — The movement ledger carries no uniqueness constraint; append-once is a CAS-gate property](0021-movement-ledger-no-uniqueness.md)
 
 ## Adding a record
 
