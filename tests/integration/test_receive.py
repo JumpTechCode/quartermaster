@@ -15,7 +15,7 @@ from quartermaster.application.handlers.arrive import run_arrive
 from quartermaster.application.handlers.create_receipt import run_create_receipt
 from quartermaster.application.handlers.receive import run_receive
 from quartermaster.application.results import CreateReceiptResult, ReceiveResult
-from quartermaster.domain.errors import IllegalTransition
+from quartermaster.domain.errors import IllegalTransition, InvalidReceiptLine
 from quartermaster.domain.ids import IdempotencyKey, LocationId, ReceiptId, SkuId
 from quartermaster.domain.movements import MovementType
 from quartermaster.domain.state_machines import ReceiptState
@@ -183,9 +183,15 @@ async def test_distinct_key_receives_one_wins_one_rejected(committed_db: AsyncEn
     )
 
     succeeded = [r for r in results if isinstance(r, ReceiveResult)]
-    rejected = [r for r in results if isinstance(r, IllegalTransition)]
+    # Which hard rejection the loser sees is interleaving-dependent under READ
+    # COMMITTED: it either reloads `received` and fails the state gate
+    # (IllegalTransition), or reads the header as still `arrived` while the line
+    # read already shows it full and trips the advisory pre-check
+    # (InvalidReceiptLine). Both are cached hard rejections that mutate no stock.
+    rejected = [r for r in results if isinstance(r, IllegalTransition | InvalidReceiptLine)]
     assert len(succeeded) == 1  # only one transition out of `arrived`
-    assert len(rejected) == 1  # the loser reloads `received` and is rejected
+    assert len(rejected) == 1  # the loser is rejected (state gate or line pre-check)
+    assert len(succeeded) + len(rejected) == len(results)  # no other outcome occurs
     async with committed_db.connect() as conn:
         cell = (
             await conn.execute(select(stock.c.qty_on_hand).where(stock.c.sku_id == "S"))
