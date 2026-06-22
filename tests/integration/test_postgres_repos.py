@@ -8,11 +8,16 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from quartermaster.adapters.postgres.identifiers import new_order_id, new_reservation_id
+from quartermaster.adapters.postgres.identifiers import (
+    new_order_id,
+    new_receipt_id,
+    new_reservation_id,
+)
 from quartermaster.adapters.postgres.tables import (
     location,
     order_line,
     orders,
+    receipt_line,
     reservation,
     sku,
     stock,
@@ -21,9 +26,10 @@ from quartermaster.adapters.postgres.unit_of_work import PostgresUnitOfWork, pos
 from quartermaster.application.ports import ClaimOutcome
 from quartermaster.domain.catalog import LocationKind
 from quartermaster.domain.idempotency import IdempotencyStatus
-from quartermaster.domain.ids import IdempotencyKey, LocationId, SkuId
+from quartermaster.domain.ids import IdempotencyKey, LocationId, ReceiptId, SkuId
 from quartermaster.domain.orders import Order, OrderLine
-from quartermaster.domain.state_machines import OrderState, ReservationState
+from quartermaster.domain.receipts import Receipt, ReceiptKind, ReceiptLine
+from quartermaster.domain.state_machines import OrderState, ReceiptState, ReservationState
 from tests.integration.seed import seed_location, seed_sku
 
 
@@ -435,4 +441,63 @@ async def test_insert_order_with_no_lines(committed_db: AsyncEngine) -> None:
         line_query = select(order_line.c.order_id).where(order_line.c.order_id == order_id)
         line_rows = (await conn.execute(line_query)).all()
     assert len(order_rows) == 1
+    assert len(line_rows) == 0
+
+
+def _supplier_receipt(receipt_id: ReceiptId) -> Receipt:
+    return Receipt(
+        receipt_id=receipt_id,
+        kind=ReceiptKind.SUPPLIER_RECEIPT,
+        state=ReceiptState.ARRIVED,
+        version=1,
+        created_at=datetime.now(UTC),
+        origin_order_id=None,
+    )
+
+
+async def test_insert_receipt_persists_all_lines(committed_db: AsyncEngine) -> None:
+    """insert_receipt batches the line inserts; verify every line lands with its own values.
+
+    Mirrors test_insert_order_persists_all_lines: two distinct SKUs so the batch
+    must land both rows, each carrying its own expected/received quantity.
+    """
+    await seed_sku(committed_db, "S")
+    await seed_sku(committed_db, "T")
+    receipt_id = new_receipt_id()
+    lines = [
+        ReceiptLine(receipt_id=receipt_id, sku_id=SkuId("S"), expected=3, received=0),
+        ReceiptLine(receipt_id=receipt_id, sku_id=SkuId("T"), expected=7, received=2),
+    ]
+    async with PostgresUnitOfWork(committed_db) as uow:
+        await uow.receipts.insert_receipt(_supplier_receipt(receipt_id), lines)
+        await uow.commit()
+    async with committed_db.connect() as conn:
+        line_rows = (
+            await conn.execute(
+                select(
+                    receipt_line.c.sku_id,
+                    receipt_line.c.expected_qty,
+                    receipt_line.c.received_qty,
+                ).where(receipt_line.c.receipt_id == receipt_id)
+            )
+        ).all()
+    # every line in the batch landed, each with its own quantities (no drops, no cross-talk)
+    assert {r.sku_id: (r.expected_qty, r.received_qty) for r in line_rows} == {
+        "S": (3, 0),
+        "T": (7, 2),
+    }
+
+
+async def test_insert_receipt_with_no_lines(committed_db: AsyncEngine) -> None:
+    """insert_receipt with an empty lines sequence still inserts the receipt row only."""
+    receipt_id = new_receipt_id()
+    async with PostgresUnitOfWork(committed_db) as uow:
+        await uow.receipts.insert_receipt(_supplier_receipt(receipt_id), [])
+        await uow.commit()
+    async with committed_db.connect() as conn:
+        line_rows = (
+            await conn.execute(
+                select(receipt_line.c.receipt_id).where(receipt_line.c.receipt_id == receipt_id)
+            )
+        ).all()
     assert len(line_rows) == 0
