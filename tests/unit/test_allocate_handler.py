@@ -147,6 +147,10 @@ async def test_zero_available_backorders_with_no_reservation() -> None:
     assert result.state is OrderState.BACKORDERED
     assert h.reservations.added == []
     assert h.orders.allocated == []
+    # A first-time CREATED -> BACKORDERED is a real transition that must persist,
+    # so the header CAS still runs even though no line gained allocation.
+    ((_id, expected, _v, target),) = h.orders.cas_calls
+    assert expected is OrderState.CREATED and target is OrderState.BACKORDERED
 
 
 async def test_greedy_spans_locations_in_location_order() -> None:
@@ -165,15 +169,33 @@ async def test_greedy_spans_locations_in_location_order() -> None:
     ]  # L1 drained first, then 3 from L2
 
 
-async def test_backordered_reallocation_with_nothing_new_is_a_version_bump() -> None:
+async def test_backordered_reallocation_with_nothing_new_skips_the_cas() -> None:
+    # A re-swept backordered order that gains no allocation and stays backordered
+    # must not be re-CASed: no header write, no dead tuple, no version bump every
+    # tick (issue #67). The result still reports the unchanged state.
     h = _harness(cells={}, order=_order(OrderState.BACKORDERED), lines=[_line("S", 5, allocated=0)])
     result = await _run(h.uow)
 
     assert result.state is OrderState.BACKORDERED
+    assert h.orders.cas_calls == []
+    assert h.orders.allocated == []
+
+
+async def test_backordered_partial_progress_still_cases() -> None:
+    # When a backordered re-allocation gains *some* allocation but stays short,
+    # the header CAS still runs: the version bump serializes concurrent
+    # allocate/cancel on an order whose lines just changed.
+    h = _harness(
+        cells={(SkuId("S"), LocationId("L1")): 2},
+        order=_order(OrderState.BACKORDERED),
+        lines=[_line("S", 5, allocated=0)],
+    )
+    result = await _run(h.uow)
+
+    assert result.state is OrderState.BACKORDERED
+    assert h.orders.allocated == [(ORDER, SkuId("S"), 2)]
     ((_id, expected, _v, target),) = h.orders.cas_calls
-    assert (
-        expected is OrderState.BACKORDERED and target is OrderState.BACKORDERED
-    )  # legal self-update
+    assert expected is OrderState.BACKORDERED and target is OrderState.BACKORDERED
 
 
 async def test_missing_order_raises_order_not_found() -> None:

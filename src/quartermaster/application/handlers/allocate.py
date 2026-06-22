@@ -3,10 +3,12 @@
 Reserves each order line greedily across the SKU's locations (location-ordered),
 recording a held reservation and a RESERVE movement per partial fill, then CASes
 the order header to ``allocated`` (all lines full) or ``backordered`` (any
-shortfall). A re-allocation of a still-short backordered order is a legal
-no-state-change version bump, not a self-transition. A 0-row CAS is an
-``OccConflict`` the envelope retries. The handler is pure orchestration over the
-ports; time and id generation enter via injected callables.
+shortfall). A re-allocation of a backordered order that gains some stock but
+stays short is a legal no-state-change version bump; one that gains nothing skips
+the CAS entirely (no write, no version bump) so a perpetually unfillable order is
+not rewritten every sweep tick (issue #67). A 0-row CAS is an ``OccConflict`` the
+envelope retries. The handler is pure orchestration over the ports; time and id
+generation enter via injected callables.
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ async def allocate(
     line_allocations: list[LineAllocation] = []
     reservation_ids: list[ReservationId] = []
     fully_allocated = True
+    any_allocated = False
 
     for line in lines:
         remaining = line.outstanding_to_allocate
@@ -90,14 +93,25 @@ async def allocate(
             reservation_ids.append(reservation_id)
             remaining -= take
         allocated_this_line = line.outstanding_to_allocate - remaining
+        if allocated_this_line > 0:
+            any_allocated = True
         line_allocations.append(LineAllocation(line.sku_id, allocated_this_line))
         if remaining > 0:
             fully_allocated = False
 
     target = OrderState.ALLOCATED if fully_allocated else OrderState.BACKORDERED
-    if target != order.state:
+    state_changes = target != order.state
+    if state_changes:
         ORDER_MACHINE.assert_legal(order.state, target)
-    if not await uow.orders.cas_state(command.order_id, order.state, order.version, target):
+    # Skip the header CAS entirely when nothing changed: a re-swept order that
+    # gained no allocation and remains backordered must not burn a row write,
+    # dead tuple, WAL record, and version bump on every sweep tick (issue #67).
+    # A real state change or any new line allocation still CASes -- both to
+    # persist the transition and to keep the version bump that serializes
+    # concurrent allocate/cancel against the lines this pass just changed.
+    if (state_changes or any_allocated) and not await uow.orders.cas_state(
+        command.order_id, order.state, order.version, target
+    ):
         raise OccConflict(f"order {command.order_id} changed under allocate")
 
     return AllocateResult(

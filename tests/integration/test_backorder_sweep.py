@@ -38,6 +38,15 @@ async def _order_state(engine: AsyncEngine, order_id: OrderId) -> str:
         )
 
 
+async def _order_version(engine: AsyncEngine, order_id: OrderId) -> int:
+    async with engine.connect() as conn:
+        return int(
+            (
+                await conn.execute(select(orders.c.version).where(orders.c.order_id == order_id))
+            ).scalar_one()
+        )
+
+
 async def _reserved(engine: AsyncEngine, sku: str) -> int:
     async with engine.connect() as conn:
         return int(
@@ -126,6 +135,23 @@ async def test_sweep_vs_live_allocate_no_oversell(committed_db: AsyncEngine) -> 
     await asyncio.gather(sweep(), live_allocate(), return_exceptions=True)
 
     assert await _reserved(committed_db, "S") == 4  # all 4 units reserved, never more (no oversell)
+    await assert_invariants(committed_db, sku)
+
+
+async def test_zero_stock_sweep_does_not_rewrite_the_order(committed_db: AsyncEngine) -> None:
+    # A backordered order on a SKU with no stock gains nothing each tick. The
+    # sweep must leave the header untouched -- no version bump, no dead tuple --
+    # rather than re-CAS it forever (issue #67).
+    sku = await seed_sku_locations_stock(committed_db, "S", {})
+    order_id = await seed_order(committed_db, state=OrderState.BACKORDERED, lines={"S": 5})
+    before = await _order_version(committed_db, order_id)
+
+    for _ in range(3):
+        run = await _sweep(committed_db)
+        assert run.scanned == 1 and run.allocated == 0 and run.still_backordered == 1  # type: ignore[attr-defined]
+
+    assert await _order_version(committed_db, order_id) == before  # no write across 3 ticks
+    assert await _order_state(committed_db, order_id) == "backordered"
     await assert_invariants(committed_db, sku)
 
 
