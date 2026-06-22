@@ -13,11 +13,14 @@ enforced by the database under real concurrent traffic.
 
 ## Status
 
-Early development. The V1 design is settled (see [Scope](#scope)) and the
-repository currently contains the project scaffold, the architecture
-boundaries, and the CI gates that every change runs against. Implementation of
-the domain, persistence, API, and load harness is in progress. Interfaces will
-change, and the engine has not been used in production.
+The V1 feature set is implemented: the domain model and two state machines, the
+Postgres persistence layer with its conditional-write guards and exactly-once
+idempotency store, the command handlers and HTTP API, the background workers
+(reservation reaper, backorder sweep, idempotency-key reaper), and the
+correctness-under-load harness with its invariant oracle. The repository builds
+and is tested under CI. It is young software — interfaces may still change, and
+it has not yet seen production use. See [Scope](#scope) for the precise
+boundaries of what V1 does and does not cover.
 
 ## Why this shape
 
@@ -85,6 +88,30 @@ re-checks the locked, committed row — there is no read-modify-write gap.
 Ports and adapters with a pure domain core and mechanically enforced
 boundaries.
 
+```mermaid
+flowchart LR
+    caller["api · workers"] -->|command + Idempotency-Key| app
+
+    subgraph qm [Quartermaster]
+        direction TB
+        app["application<br/>handlers · transaction envelope · bounded OCC retry"]
+        domain["domain<br/>state machines · invariants (pure leaf)"]
+        adapters["adapters/postgres<br/>conditional writes · CAS · idempotency · ledger"]
+        app -->|guards from| domain
+        app -->|ports implemented by| adapters
+    end
+
+    adapters -->|one transaction per command| db[("Postgres<br/>CHECK constraints · row locks")]
+```
+
+`domain` imports nothing internal; `application` imports `domain` and defines
+the ports; `adapters` implement them; `api` and `workers` drive `application`;
+only `app.py` imports concrete implementations. These edges are enforced in CI
+by [import-linter](https://import-linter.readthedocs.io/) contracts, so the
+dependency graph is checked rather than merely documented.
+
+## Project layout
+
 ```
 src/quartermaster/
   domain/        pure: entities, transition tables + guards, invariants, errors
@@ -99,12 +126,6 @@ migrations/      Alembic
 tests/           unit (pure domain) and integration (real Postgres)
 loadtest/        the correctness-under-load harness
 ```
-
-`domain` imports nothing internal; `application` imports `domain` and defines
-the ports; `adapters` implement them; `api` and `workers` drive `application`;
-only `app.py` imports concrete implementations. These edges are enforced in CI
-by [import-linter](https://import-linter.readthedocs.io/) contracts, so the
-dependency graph is checked rather than merely documented.
 
 ## Testing
 
@@ -134,26 +155,43 @@ violation in the other two runs. `read_cas` is a value-compare-and-swap
 (correct, but retries under contention); `guarded` is the production
 conditional-write primitive.
 
-Figures below are from one measured run on a developer laptop (Apple M2,
-Postgres 17.10 in Docker, 4 SKUs, 64 concurrent allocations, concurrency=32).
-They are illustrative — throughput numbers vary with hardware — but the
-qualitative result is the property that matters: `naive` consistently oversells,
+Figures below are from one measured run on a developer laptop (Apple M3, 8 GB
+RAM; Postgres 17 in Docker), driving 2,000 allocations at concurrency 128
+against four hot cells — the worst case, where every command contends for the
+same handful of rows. They are illustrative — throughput varies with hardware —
+but the qualitative result is the property that matters: `naive` oversells,
 `guarded` and `read_cas` do not.
 
 ```
   strategy    thrpt/s    p50ms    p99ms  retries  exhaust  oversell  oracle
 ---------------------------------------------------------------------------
-     naive        156    197.1    394.7        0        0       106    FAIL
-  read_cas        162    170.2    361.3       95        1         0      OK
-   guarded        224    140.2    280.7        0        0         0      OK
+     naive        636    162.8    557.1        0        0      3080    FAIL
+  read_cas        374    282.7   1152.4     3496      344         0      OK
+   guarded        742    146.0    407.9        0        0         0      OK
 ```
 
-The full on-demand sweep (larger scale) is:
+Under this contention the strategies separate cleanly. `naive` is quick but
+wrong: it silently oversells by 3,080 units, and the oracle's
+`conservation_reserved` check fails — the falsification control firing exactly
+as designed, which is what gives the two green results their meaning. `read_cas`
+is correct but pays for it, thrashing through 3,496 OCC retries and exhausting
+its retry budget on 344 commands (each a `503` in production) at roughly half the
+throughput. `guarded`, the production conditional-write primitive, is both
+correct and fastest: no retries, no exhaustion, no oversell.
+
+The same guarded workload driven by four OS processes rather than one async
+event loop (asyncpg pools are not fork-safe, so each process builds its own)
+keeps the oracle green with zero oversell — correctness holds under genuine
+multi-core parallelism, not only single-loop concurrency. Aggregate throughput
+there is bound by row-lock contention on the hot cells; spreading the same load
+across more cells is what lets the extra processes pay off.
+
+The full on-demand sweep:
 
 ```sh
 uv run python -m loadtest \
   --database-url "postgresql+asyncpg://user:pw@localhost:5432/qm" \
-  --orders 2000 --concurrency 128
+  --skus 4 --orders 2000 --on-hand 500 --concurrency 128
 ```
 
 ## Development and checks
