@@ -23,9 +23,9 @@ from quartermaster.application.ports import UnitOfWork, UnitOfWorkFactory
 from quartermaster.application.results import PutawayLine, PutawayResult
 from quartermaster.domain.catalog import LocationKind
 from quartermaster.domain.errors import (
-    InvariantViolation,
     LocationKindMismatch,
     ReceiptNotFound,
+    StockConflict,
     UnknownLocation,
 )
 from quartermaster.domain.ids import IdempotencyKey, LocationId, MovementId, ReceiptId
@@ -68,7 +68,11 @@ async def putaway(
         if line.received == 0:
             continue
         if not await uow.stock.remove_on_hand(line.sku_id, command.from_location, line.received):
-            raise InvariantViolation(
+            # from_location is a free request field: a cell that lacks the
+            # unreserved stock is a foreseeable client/concurrency conflict (409),
+            # not a server-side invariant breach (issue #32). Transient -- the
+            # rollback discards the lines already moved in this loop.
+            raise StockConflict(
                 f"receipt {command.receipt_id} line {line.sku_id}: "
                 f"{line.received} not available at {command.from_location}"
             )

@@ -32,6 +32,7 @@ The format follows Michael Nygard's
 - [0021 — The movement ledger carries no uniqueness constraint; append-once is a CAS-gate property](0021-movement-ledger-no-uniqueness.md)
 - [0022 — Return validation is per-line against shipped quantity, non-cumulative](0022-return-validation-against-shipped.md)
 - [0023 — The invariant oracle reconstructs both on-hand and reserved from the ledger; exactly-once is out-of-band](0023-invariant-oracle-reconstructs-both-balances.md)
+- [0024 — Stock-guard rejections are classified: client conflict (409) vs. invariant breach (500)](0024-stock-guard-error-taxonomy.md)
 
 ## Adding a record
 

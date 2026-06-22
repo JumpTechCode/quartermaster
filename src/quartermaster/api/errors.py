@@ -19,10 +19,12 @@ from quartermaster.domain.errors import (
     IllegalTransition,
     InsufficientStock,
     InvalidReceiptLine,
+    InvariantViolation,
     LocationKindMismatch,
     OrderNotFound,
     ReceiptNotFound,
     ReturnNotAllowed,
+    StockConflict,
     UnknownLocation,
     UnknownSku,
 )
@@ -50,6 +52,7 @@ _STATUS_MAP: tuple[tuple[type[Exception], int, str], ...] = (
     (IllegalTransition, 409, "illegal_transition"),
     (IdempotencyKeyReuse, 409, "idempotency_key_reuse"),
     (InsufficientStock, 409, "insufficient_stock"),
+    (StockConflict, 409, "stock_conflict"),
     (RetryExhausted, 503, "retry_exhausted"),
 )
 
@@ -100,11 +103,27 @@ async def _internal_error_handler(request: Request, exc: Exception) -> JSONRespo
     )
 
 
+async def _invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+    """A genuine consistency breach: a classified 500 alarm (ADR-0024).
+
+    Distinct from the opaque ``internal_error`` catch-all so it is greppable and
+    alertable, but the message stays generic -- the internal detail (which
+    reservation, which cell) is not surfaced to the client.
+    """
+    return JSONResponse(
+        status_code=500,
+        content=_error_body("invariant_violation", "a stock invariant was violated"),
+    )
+
+
 def register_error_handlers(app: FastAPI) -> None:
     """Attach the domain-error and validation-error handlers to ``app``."""
     for exc_type, status, code in _STATUS_MAP:
         app.add_exception_handler(exc_type, _make_handler(status, code))
     app.add_exception_handler(RequestValidationError, _validation_handler)
+    # A genuine invariant breach: a classified 500 alarm with a generic body,
+    # kept off the _STATUS_MAP (which leaks str(exc)) so internals do not surface.
+    app.add_exception_handler(InvariantViolation, _invariant_violation_handler)
     # Catch-all: unmapped exceptions become a uniform shaped 500.
     # Starlette routes Exception-keyed handlers to ServerErrorMiddleware (the outermost
     # layer), so specific domain handlers in ExceptionMiddleware still win for their types.

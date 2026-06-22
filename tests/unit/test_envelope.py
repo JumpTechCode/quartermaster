@@ -15,8 +15,10 @@ from quartermaster.domain.errors import (
     IllegalTransition,
     InsufficientStock,
     InvalidReceiptLine,
+    InvariantViolation,
     LocationKindMismatch,
     ReceiptNotFound,
+    StockConflict,
     UnknownLocation,
 )
 from quartermaster.domain.idempotency import IdempotencyStatus
@@ -83,6 +85,40 @@ async def test_transient_failure_rolls_back_and_does_not_persist() -> None:
         raise InsufficientStock("nope")
 
     with pytest.raises(InsufficientStock):
+        await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)
+
+    assert uow.commits == 0 and uow.rollbacks == 1
+    assert idempotency.finalize_calls == []
+
+
+async def test_stock_conflict_rolls_back_and_does_not_persist() -> None:
+    # StockConflict is transient like InsufficientStock: a foreseeable shortfall
+    # on otherwise-valid input that a retry may clear (issue #32). Rolled back so
+    # any partial line work is discarded; never finalized, so it is not cached.
+    idempotency = FakeIdempotencyRepo()
+    uow = FakeUnitOfWork(idempotency=idempotency)
+
+    async def handler(u: UnitOfWork, c: FakeCommand) -> FakeResult:
+        raise StockConflict("from_location lacks the stock")
+
+    with pytest.raises(StockConflict):
+        await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)
+
+    assert uow.commits == 0 and uow.rollbacks == 1
+    assert idempotency.finalize_calls == []
+
+
+async def test_invariant_violation_rolls_back_without_finalizing() -> None:
+    # A genuine consistency breach is a server-side alarm, not a business
+    # rejection: it rolls back (no partial state commits) and is never cached, so
+    # it surfaces as a classified 500 rather than a replayed rejection (issue #32).
+    idempotency = FakeIdempotencyRepo()
+    uow = FakeUnitOfWork(idempotency=idempotency)
+
+    async def handler(u: UnitOfWork, c: FakeCommand) -> FakeResult:
+        raise InvariantViolation("reservation held but its stock is missing")
+
+    with pytest.raises(InvariantViolation):
         await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)
 
     assert uow.commits == 0 and uow.rollbacks == 1

@@ -16,9 +16,9 @@ from quartermaster.application.results import PutawayResult
 from quartermaster.domain.catalog import LocationKind
 from quartermaster.domain.errors import (
     IllegalTransition,
-    InvariantViolation,
     LocationKindMismatch,
     ReceiptNotFound,
+    StockConflict,
     UnknownLocation,
 )
 from quartermaster.domain.ids import IdempotencyKey, LocationId, MovementId, ReceiptId, SkuId
@@ -155,9 +155,12 @@ async def test_putaway_to_non_shelf_location_rejected() -> None:
         await _run(uow)
 
 
-async def test_putaway_remove_miss_after_gate_raises_invariant() -> None:
+async def test_putaway_remove_miss_raises_stock_conflict() -> None:
+    # from_location is a free client request field; a cell that lacks the
+    # unreserved stock is a foreseeable client/concurrency conflict (409), not the
+    # server-side InvariantViolation breach (issue #32).
     uow, *_ = _harness(receipt=_receipt(), lines=[_line("A", 5)], remove_result=False)
-    with pytest.raises(InvariantViolation):
+    with pytest.raises(StockConflict):
         await _run(uow)
 
 

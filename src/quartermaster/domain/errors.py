@@ -13,7 +13,14 @@ class QuartermasterError(Exception):
 
 
 class InvariantViolation(QuartermasterError):
-    """A stock or ledger invariant would be violated by an operation."""
+    """A stock or ledger invariant would be violated by an operation.
+
+    Reserved for a genuine consistency breach the system should never reach under
+    correct operation -- e.g. a reservation an actor holds whose backing stock is
+    gone. It is a server-side correctness alarm, not a client-reachable outcome;
+    it rolls back and is surfaced as a classified 500, never cached as a business
+    rejection. Contrast :class:`StockConflict`, the foreseeable client/concurrency
+    shortfall on otherwise-valid input."""
 
 
 class IllegalTransition(QuartermasterError):
@@ -22,6 +29,14 @@ class IllegalTransition(QuartermasterError):
 
 class InsufficientStock(QuartermasterError):
     """Not enough available stock to satisfy a reservation or a pick."""
+
+
+class StockConflict(QuartermasterError):
+    """A stock guard rejected an operation on otherwise-valid input: the named
+    cell lacked enough unreserved stock to move (e.g. putaway from a location
+    that does not currently hold the quantity, whether mis-addressed or raced by
+    a concurrent mover). A foreseeable client/concurrency conflict mapped to 409,
+    not the server-side :class:`InvariantViolation` breach."""
 
 
 class IdempotencyKeyReuse(QuartermasterError):

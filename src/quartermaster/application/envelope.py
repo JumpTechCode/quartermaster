@@ -20,10 +20,12 @@ from quartermaster.domain.errors import (
     IllegalTransition,
     InsufficientStock,
     InvalidReceiptLine,
+    InvariantViolation,
     LocationKindMismatch,
     OrderNotFound,
     ReceiptNotFound,
     ReturnNotAllowed,
+    StockConflict,
     UnknownLocation,
     UnknownSku,
 )
@@ -61,7 +63,11 @@ HARD_REJECTION: tuple[type[Exception], ...] = (
     LocationKindMismatch,
     ReturnNotAllowed,
 )
-TRANSIENT: tuple[type[Exception], ...] = (InsufficientStock,)
+# Business shortfalls: rolled back so the key is not persisted and a later retry
+# may succeed. StockConflict (putaway from a cell lacking the unreserved stock)
+# joins InsufficientStock here -- both are "not enough stock right now" outcomes
+# on otherwise-valid input, not consistency breaches (ADR-0024).
+TRANSIENT: tuple[type[Exception], ...] = (InsufficientStock, StockConflict)
 
 
 class Command(Protocol):
@@ -102,6 +108,15 @@ async def execute[C: Command, R: Response](
                 await uow.rollback()
                 continue
             except TRANSIENT:
+                await uow.rollback()
+                raise
+            except InvariantViolation:
+                # A genuine consistency breach (a reservation whose backing stock
+                # is gone): a server-side alarm, not a business rejection. Roll
+                # back so no partial state commits and never finalize -- caching
+                # would both mislabel an alarm as a rejection and (mid-loop) risk
+                # committing partial work. It surfaces as a classified 500
+                # (ADR-0024), distinct from the opaque internal_error catch-all.
                 await uow.rollback()
                 raise
             except HARD_REJECTION as exc:

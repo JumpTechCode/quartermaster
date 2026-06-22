@@ -18,9 +18,11 @@ from collections.abc import Sequence
 from uuid import UUID
 
 import httpx
+from fastapi import FastAPI
 
 from quartermaster.api.app import create_app
 from quartermaster.api.deps import Deps
+from quartermaster.api.errors import register_error_handlers
 from quartermaster.application.ports import (
     CatalogRepo,
     ClaimOutcome,
@@ -38,6 +40,7 @@ from quartermaster.application.ports import (
     UnitOfWorkFactory,
 )
 from quartermaster.domain.catalog import LocationKind
+from quartermaster.domain.errors import InvariantViolation, StockConflict
 from quartermaster.domain.idempotency import IdempotencyStatus
 from quartermaster.domain.ids import (
     IdempotencyKey,
@@ -303,3 +306,41 @@ async def test_unmapped_exception_returns_shaped_500() -> None:
         resp = await client.get(f"/orders/{_OID}")
     assert resp.status_code == 500
     assert resp.json() == {"error": "internal_error", "detail": "an unexpected error occurred"}
+
+
+def _raises_app(exc: Exception) -> FastAPI:
+    """A minimal app with the domain-error handlers and one route that raises ``exc``."""
+    app = FastAPI()
+    register_error_handlers(app)
+
+    @app.get("/boom")
+    async def boom() -> None:
+        raise exc
+
+    return app
+
+
+async def _status_and_body(exc: Exception) -> tuple[int, dict[str, str]]:
+    transport = httpx.ASGITransport(app=_raises_app(exc), raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        resp = await client.get("/boom")
+    return resp.status_code, resp.json()
+
+
+async def test_stock_conflict_maps_to_409() -> None:
+    # A foreseeable client/concurrency shortfall on valid input is a 409 conflict,
+    # not a 500 (issue #32). Its detail is a client-facing condition, so it is kept.
+    status, body = await _status_and_body(StockConflict("from RCV: 5 not available"))
+    assert status == 409
+    assert body == {"error": "stock_conflict", "detail": "from RCV: 5 not available"}
+
+
+async def test_invariant_violation_maps_to_classified_500_without_leaking() -> None:
+    # A genuine breach is a server-side alarm: a *classified* 500 (distinct from the
+    # opaque internal_error catch-all) whose body does not leak the internal detail.
+    status, body = await _status_and_body(
+        InvariantViolation("reservation 7 was held but its stock is missing")
+    )
+    assert status == 500
+    assert body["error"] == "invariant_violation"
+    assert "reservation" not in body["detail"]  # internal specifics are not surfaced
