@@ -39,6 +39,7 @@ The format follows Michael Nygard's
 - [0028 — OCC retries use jittered backoff; the 503 advertises a bounded Retry-After](0028-occ-retry-jittered-backoff.md)
 - [0029 — The idempotency write path is guarded against double-finalize and durable PENDING](0029-idempotency-write-path-hardening.md)
 - [0030 — One replica per worker type; only the idempotency GC partitions with SKIP LOCKED](0030-single-instance-workers-and-skip-locked-gc.md)
+- [0031 — Receiving cells are fungible (sku, location) staging; putaway trusts from_location](0031-fungible-receiving-cells-no-putaway-provenance.md)
 
 ## Adding a record
 

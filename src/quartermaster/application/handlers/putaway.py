@@ -70,10 +70,12 @@ async def putaway(
         if line.received == 0:
             continue
         if not await uow.stock.remove_on_hand(line.sku_id, command.from_location, line.received):
-            # from_location is a free request field: a cell that lacks the
-            # unreserved stock is a foreseeable client/concurrency conflict (409),
-            # not a server-side invariant breach (issue #32). Transient -- the
-            # rollback discards the lines already moved in this loop.
+            # from_location is a free request field, trusted with no per-receipt
+            # provenance check -- receiving cells are fungible (sku, location)
+            # staging by design (ADR-0031, #76). A cell that lacks the unreserved
+            # stock is a foreseeable client/concurrency conflict (409), not a
+            # server-side invariant breach (issue #32). Transient -- the rollback
+            # discards the lines already moved in this loop.
             raise StockConflict(
                 f"receipt {command.receipt_id} line {line.sku_id}: "
                 f"{line.received} not available at {command.from_location}"
