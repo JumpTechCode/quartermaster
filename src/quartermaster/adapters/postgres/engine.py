@@ -50,7 +50,16 @@ def _translate_transient_conflicts(context: ExceptionContext) -> None:
 
 
 def create_engine(database_url: str) -> AsyncEngine:
-    """Build the async engine for ``database_url`` (a ``postgresql+asyncpg://`` URL)."""
-    engine = create_async_engine(database_url)
+    """Build the async engine for ``database_url`` (a ``postgresql+asyncpg://`` URL).
+
+    The isolation level is pinned to READ COMMITTED on the engine so the design's
+    concurrency contract is self-enforcing rather than dependent on the Postgres
+    cluster/role default. Every guard -- the conditional ``WHERE``, the
+    ``FOR UPDATE`` EvalPlanQual re-read, the ``ON CONFLICT DO UPDATE`` re-read --
+    is reasoned under READ COMMITTED (ADR-0005, ADR-0016); a stricter server
+    default would otherwise turn clean guard-rejects into 40001 retries (issue
+    #71). The pin applies on every new connection and is reset on return to pool.
+    """
+    engine = create_async_engine(database_url, isolation_level="READ COMMITTED")
     event.listen(engine.sync_engine, "handle_error", _translate_transient_conflicts)
     return engine

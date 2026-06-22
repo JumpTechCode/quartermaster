@@ -1,6 +1,10 @@
 """The Postgres UnitOfWork and repositories — explicit Core SQL for the command
 path. The conditional ``WHERE`` / ``FOR UPDATE`` re-read is the concurrency
 guard under READ COMMITTED (design spec §5, §8); the ORM is deliberately unused.
+
+READ COMMITTED is not assumed from the cluster default: the engine pins it on
+every connection (``create_engine``, issue #71), so the guards below are reasoned
+against the level the code enforces, not the one the operator happens to ship.
 """
 
 from __future__ import annotations
