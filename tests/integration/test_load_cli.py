@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from loadtest.__main__ import main
 
 
-async def test_cli_runs_and_writes_json(postgres_url: str, tmp_path) -> None:
+async def test_cli_runs_and_writes_json(postgres_url: str, tmp_path: Path) -> None:
     out = tmp_path / "report.json"
     code = await main(
         [
