@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from quartermaster.application.errors import RetryExhausted
+from quartermaster.application.errors import IdempotencyInFlight, RetryExhausted
 from quartermaster.domain.errors import (
     IdempotencyKeyReuse,
     IllegalTransition,
@@ -52,6 +52,7 @@ _STATUS_MAP: tuple[tuple[type[Exception], int, str], ...] = (
     (ReceiptNotFound, 404, "receipt_not_found"),
     (IllegalTransition, 409, "illegal_transition"),
     (IdempotencyKeyReuse, 409, "idempotency_key_reuse"),
+    (IdempotencyInFlight, 409, "idempotency_in_flight"),
     (InsufficientStock, 409, "insufficient_stock"),
     (StockConflict, 409, "stock_conflict"),
     (RetryExhausted, 503, "retry_exhausted"),

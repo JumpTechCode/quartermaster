@@ -246,6 +246,37 @@ async def test_replay_branch_does_not_back_off() -> None:
     assert slept == []  # the idempotency-claim (EXISTS) branch is backoff-free
 
 
+async def test_pending_row_replay_raises_in_flight() -> None:
+    # A durable PENDING row read back (only reachable if claim ever commits in a
+    # separate transaction) is a typed "in flight, retry" outcome, not a
+    # strippable assert (issue #38).
+    from quartermaster.application.errors import IdempotencyInFlight
+
+    stored = StoredResponse("fp", IdempotencyStatus.PENDING, None)
+    uow = FakeUnitOfWork(idempotency=FakeIdempotencyRepo(ClaimOutcome.EXISTS, stored))
+
+    async def handler(u: UnitOfWork, c: FakeCommand) -> FakeResult:
+        raise AssertionError("handler must not run on replay")
+
+    with pytest.raises(IdempotencyInFlight):
+        await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)
+
+
+async def test_succeeded_row_missing_response_raises_in_flight() -> None:
+    # A SUCCEEDED row with no response is corruption, not a replayable result;
+    # surface it as the same typed outcome rather than asserting on None.
+    from quartermaster.application.errors import IdempotencyInFlight
+
+    stored = StoredResponse("fp", IdempotencyStatus.SUCCEEDED, None)
+    uow = FakeUnitOfWork(idempotency=FakeIdempotencyRepo(ClaimOutcome.EXISTS, stored))
+
+    async def handler(u: UnitOfWork, c: FakeCommand) -> FakeResult:
+        raise AssertionError("handler must not run on replay")
+
+    with pytest.raises(IdempotencyInFlight):
+        await execute(fake_factory(uow), FakeCommand(), handler, decode_fake)
+
+
 async def test_replay_of_cached_rejection_reraises() -> None:
     stored = StoredResponse(
         "fp",

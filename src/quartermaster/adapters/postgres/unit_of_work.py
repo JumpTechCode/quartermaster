@@ -31,6 +31,7 @@ from quartermaster.adapters.postgres.tables import (
 from quartermaster.adapters.postgres.tables import (
     location as location_table,
 )
+from quartermaster.application.errors import IdempotencyFinalizeError
 from quartermaster.application.ports import (
     CatalogRepo,
     ClaimOutcome,
@@ -637,11 +638,23 @@ class PgIdempotencyRepo:
     async def finalize(
         self, key: IdempotencyKey, status: IdempotencyStatus, response: dict[str, Any] | None
     ) -> None:
-        await self._conn.execute(
+        # Guard on status='pending' and require exactly one row: a terminal record
+        # must never be silently overwritten by a second finalize (issue #38). In
+        # the single-transaction envelope the row is always the PENDING one this
+        # transaction just claimed, so a miss is a genuine internal breach.
+        result = await self._conn.execute(
             idempotency_key.update()
-            .where(idempotency_key.c.key == key)
+            .where(
+                idempotency_key.c.key == key,
+                idempotency_key.c.status == IdempotencyStatus.PENDING.value,
+            )
             .values(status=status.value, response=response)
         )
+        if result.rowcount != 1:
+            raise IdempotencyFinalizeError(
+                f"finalize of idempotency key {key!r} matched no pending row "
+                f"(rowcount={result.rowcount})"
+            )
 
     async def delete_expired(self, before: datetime, limit: int) -> int:
         result = await self._conn.execute(

@@ -21,3 +21,26 @@ class RetryExhausted(QuartermasterError):
     def __init__(self, key: IdempotencyKey) -> None:
         super().__init__(f"OCC retries exhausted for idempotency key {key!r}")
         self.key = key
+
+
+class IdempotencyInFlight(QuartermasterError):
+    """A duplicate request arrived while the original is still in flight.
+
+    Only reachable if a durable ``pending`` row (or a ``succeeded`` row missing
+    its response) is read back on replay -- impossible in the single-transaction
+    envelope today, but defined as a typed "retry to fetch the result" outcome so
+    the replay branch never depends on a strippable assert (issue #38).
+    """
+
+    def __init__(self, key: IdempotencyKey) -> None:
+        super().__init__(f"idempotency key {key!r} is currently in flight; retry")
+        self.key = key
+
+
+class IdempotencyFinalizeError(QuartermasterError):
+    """``finalize`` matched no pending row -- a double-finalize or a missing claim.
+
+    A should-never-happen internal breach under the single-transaction envelope:
+    the guarded ``UPDATE ... WHERE status = 'pending'`` updated zero rows, meaning
+    the row was already terminal or absent (issue #38).
+    """

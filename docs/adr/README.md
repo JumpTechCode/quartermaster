@@ -37,6 +37,7 @@ The format follows Michael Nygard's
 - [0026 — Workers classify contention vs. faults, and the sweep retries OCC in-tick](0026-worker-fault-taxonomy-and-sweep-retry.md)
 - [0027 — Worker loop has a cancellable interval wait and a per-tick watchdog](0027-worker-cancellable-shutdown-and-tick-watchdog.md)
 - [0028 — OCC retries use jittered backoff; the 503 advertises a bounded Retry-After](0028-occ-retry-jittered-backoff.md)
+- [0029 — The idempotency write path is guarded against double-finalize and durable PENDING](0029-idempotency-write-path-hardening.md)
 
 ## Adding a record
 

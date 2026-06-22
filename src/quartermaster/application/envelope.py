@@ -15,7 +15,11 @@ import random
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
-from quartermaster.application.errors import OccConflict, RetryExhausted
+from quartermaster.application.errors import (
+    IdempotencyInFlight,
+    OccConflict,
+    RetryExhausted,
+)
 from quartermaster.application.ports import ClaimOutcome, UnitOfWork, UnitOfWorkFactory
 from quartermaster.domain.errors import (
     IdempotencyKeyReuse,
@@ -120,8 +124,13 @@ async def execute[C: Command, R: Response](
                     )
                 if stored.status is IdempotencyStatus.REJECTED:
                     raise _rejection_error(stored.response)
-                assert stored.response is not None
-                return decode(stored.response)
+                if stored.status is IdempotencyStatus.SUCCEEDED and stored.response is not None:
+                    return decode(stored.response)
+                # A durable PENDING row (only reachable if claim ever commits in a
+                # separate transaction) or a SUCCEEDED row missing its response
+                # (corruption): a typed "in flight, retry" outcome instead of a
+                # strippable ``assert stored.response is not None`` (issue #38).
+                raise IdempotencyInFlight(command.key)
             try:
                 result = await handler(uow, command)
             except OccConflict:

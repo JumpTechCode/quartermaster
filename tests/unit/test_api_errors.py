@@ -336,6 +336,16 @@ async def test_stock_conflict_maps_to_409() -> None:
     assert body == {"error": "stock_conflict", "detail": "from RCV: 5 not available"}
 
 
+async def test_idempotency_in_flight_maps_to_409() -> None:
+    # A duplicate request arriving while the original is still in flight: the
+    # client should retry to fetch the cached result (issue #38, Stripe-style).
+    from quartermaster.application.errors import IdempotencyInFlight
+
+    status, body = await _status_and_body(IdempotencyInFlight(IdempotencyKey("k")))
+    assert status == 409
+    assert body["error"] == "idempotency_in_flight"
+
+
 async def test_retry_exhausted_503_advertises_a_bounded_nonzero_retry_after() -> None:
     # The 503 status is the intended terminal (ADR-0020); the defect was the
     # Retry-After: 0 header that invited an instant herd rejoin (issue #72).
