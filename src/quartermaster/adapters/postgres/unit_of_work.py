@@ -404,14 +404,22 @@ class PgReceiptRepo:
                 origin_order_id=receipt_obj.origin_order_id,
             )
         )
-        for line in lines:
+        if lines:
+            # A single multi-row INSERT (executemany form) instead of one
+            # round-trip per line, mirroring insert_order. Pass a list of dicts
+            # as params alongside the bare insert() construct -- table.insert()
+            # .values(list) does not use executemany with asyncpg, this form does.
             await self._conn.execute(
-                receipt_line.insert().values(
-                    receipt_id=line.receipt_id,
-                    sku_id=line.sku_id,
-                    expected_qty=line.expected,
-                    received_qty=line.received,
-                )
+                receipt_line.insert(),
+                [
+                    {
+                        "receipt_id": line.receipt_id,
+                        "sku_id": line.sku_id,
+                        "expected_qty": line.expected,
+                        "received_qty": line.received,
+                    }
+                    for line in lines
+                ],
             )
 
     async def cas_state(
