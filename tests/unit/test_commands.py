@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID
+
+import pytest
 
 from quartermaster.application.commands import (
     AllocateCommand,
@@ -11,9 +14,11 @@ from quartermaster.application.commands import (
     CloseReceiptCommand,
     CreateOrderCommand,
     CreateReceiptCommand,
+    CreateReturnCommand,
     PutawayCommand,
     ReceiveCommand,
 )
+from quartermaster.domain.errors import InvalidCommandLines
 from quartermaster.domain.ids import (
     IdempotencyKey,
     LocationId,
@@ -21,10 +26,60 @@ from quartermaster.domain.ids import (
     ReceiptId,
     SkuId,
 )
+from quartermaster.domain.quantities import MAX_QTY
 
 ORDER_A = OrderId(UUID("00000000-0000-7000-8000-000000000001"))
 ORDER_B = OrderId(UUID("00000000-0000-7000-8000-000000000002"))
 _RID = ReceiptId(UUID("00000000-0000-7000-8000-000000000005"))
+_K = IdempotencyKey("k")
+
+
+# Below-API parity with the pydantic edge (schemas.py: gt=0, le=MAX_QTY, min_length,
+# _no_duplicate_skus): every line-bearing command validates its lines at construction so
+# callers that bypass HTTP -- the load harness, workers, fixtures -- cannot slip a
+# degenerate command past into a 500 (issue #74).
+def _line_builders() -> list[Callable[[tuple[tuple[SkuId, int], ...]], object]]:
+    return [
+        lambda lines: CreateOrderCommand(lines, _K),
+        lambda lines: CreateReceiptCommand(lines, _K),
+        lambda lines: CreateReturnCommand(ORDER_A, lines, _K),
+        lambda lines: ReceiveCommand(_RID, LocationId("L1"), lines, _K),
+    ]
+
+
+@pytest.mark.parametrize("build", _line_builders())
+def test_command_rejects_empty_lines(build: Callable[..., object]) -> None:
+    with pytest.raises(InvalidCommandLines):
+        build(())
+
+
+@pytest.mark.parametrize("build", _line_builders())
+def test_command_rejects_zero_quantity(build: Callable[..., object]) -> None:
+    with pytest.raises(InvalidCommandLines):
+        build(((SkuId("A"), 0),))
+
+
+@pytest.mark.parametrize("build", _line_builders())
+def test_command_rejects_negative_quantity(build: Callable[..., object]) -> None:
+    with pytest.raises(InvalidCommandLines):
+        build(((SkuId("A"), -1),))
+
+
+@pytest.mark.parametrize("build", _line_builders())
+def test_command_rejects_quantity_over_ceiling(build: Callable[..., object]) -> None:
+    with pytest.raises(InvalidCommandLines):
+        build(((SkuId("A"), MAX_QTY + 1),))
+
+
+@pytest.mark.parametrize("build", _line_builders())
+def test_command_rejects_duplicate_skus(build: Callable[..., object]) -> None:
+    with pytest.raises(InvalidCommandLines):
+        build(((SkuId("A"), 6), (SkuId("A"), 4)))
+
+
+@pytest.mark.parametrize("build", _line_builders())
+def test_command_accepts_valid_lines(build: Callable[..., object]) -> None:
+    build(((SkuId("A"), 1), (SkuId("B"), MAX_QTY)))  # no raise
 
 
 def test_fingerprint_is_stable_for_same_order() -> None:

@@ -104,6 +104,9 @@ order_line = Table(
         "AND picked_qty <= allocated_qty AND allocated_qty <= ordered_qty",
         name="monotonic",
     ),
+    # A line must order at least one unit; storage backstop for the below-API
+    # positivity guard (issue #74). Monotonic alone admits ordered_qty = 0.
+    CheckConstraint("ordered_qty > 0", name="ordered_positive"),
 )
 
 receipt = Table(
@@ -135,6 +138,9 @@ receipt_line = Table(
         "0 <= received_qty AND received_qty <= expected_qty",
         name="received_le_expected",
     ),
+    # A line must expect at least one unit; storage backstop for the below-API
+    # positivity guard (issue #74). received_le_expected alone admits expected_qty = 0.
+    CheckConstraint("expected_qty > 0", name="expected_positive"),
 )
 
 reservation = Table(

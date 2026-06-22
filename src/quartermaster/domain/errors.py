@@ -64,6 +64,14 @@ class InvalidReceiptLine(QuartermasterError):
     quantity (a hard rejection)."""
 
 
+class InvalidCommandLines(QuartermasterError):
+    """A command's lines are malformed independent of any stored state: empty,
+    a non-positive or over-ceiling quantity, or a duplicate SKU within the one
+    command (a hard rejection). Mirrors the pydantic HTTP-edge rules so callers
+    that bypass the API -- the load harness, workers, fixtures -- get the same
+    deterministic 4xx rejection instead of a later opaque invariant breach."""
+
+
 class LocationKindMismatch(QuartermasterError):
     """An inbound command named a location of the wrong kind: receiving into a
     shelf, or putting away to a non-shelf (a hard rejection). Allocation only

@@ -80,6 +80,48 @@ async def test_order_line_quantities_must_be_monotonic(db: AsyncConnection) -> N
         )
 
 
+async def test_order_line_ordered_qty_must_be_positive(db: AsyncConnection) -> None:
+    # ordered_qty = 0 satisfies the monotonic chain (0<=0<=0<=0) but not ordered_positive,
+    # the storage backstop for the below-API qty>0 guard (issue #74).
+    order_id = await _seed(db)
+    with pytest.raises(IntegrityError):
+        await db.execute(
+            order_line.insert().values(
+                order_id=order_id,
+                sku_id="SKU1",
+                ordered_qty=0,
+                allocated_qty=0,
+                picked_qty=0,
+                shipped_qty=0,
+            )
+        )
+
+
+async def test_receipt_line_expected_qty_must_be_positive(db: AsyncConnection) -> None:
+    # expected_qty = 0 satisfies received_le_expected (0<=0) but not expected_positive.
+    await _seed_reference(db)
+    receipt_id = new_uuid7()
+    await db.execute(
+        receipt.insert().values(
+            receipt_id=receipt_id,
+            kind="supplier_receipt",
+            state="expected",
+            version=1,
+            created_at=_now(),
+            origin_order_id=None,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await db.execute(
+            receipt_line.insert().values(
+                receipt_id=receipt_id,
+                sku_id="SKU1",
+                expected_qty=0,
+                received_qty=0,
+            )
+        )
+
+
 async def test_reservation_quantity_must_be_positive(db: AsyncConnection) -> None:
     order_id = await _seed(db)
     with pytest.raises(IntegrityError):

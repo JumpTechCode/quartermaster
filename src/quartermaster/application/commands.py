@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from quartermaster.domain.errors import InvalidCommandLines
 from quartermaster.domain.ids import (
     IdempotencyKey,
     LocationId,
@@ -19,11 +20,33 @@ from quartermaster.domain.ids import (
     ReceiptId,
     SkuId,
 )
+from quartermaster.domain.quantities import MAX_QTY
 
 
 def _fingerprint(payload: dict[str, Any]) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _validate_lines(lines: tuple[tuple[SkuId, int], ...]) -> None:
+    """Below-API line validation mirroring the pydantic HTTP edge (schemas.py).
+
+    Non-empty, every quantity in ``[1, MAX_QTY]``, no duplicate SKU within the one
+    command. Duplicates are rejected (not accumulated) for parity with the API's
+    ``_no_duplicate_skus``; raising :class:`InvalidCommandLines` keeps a degenerate
+    command a deterministic hard rejection rather than a later opaque breach.
+    """
+    if not lines:
+        raise InvalidCommandLines("command must have at least one line")
+    seen: set[SkuId] = set()
+    for sku, qty in lines:
+        if sku in seen:
+            raise InvalidCommandLines(f"duplicate sku in command lines: {sku}")
+        seen.add(sku)
+        if not (1 <= qty <= MAX_QTY):
+            raise InvalidCommandLines(
+                f"line quantity for {sku} must be in [1, {MAX_QTY}], got {qty}"
+            )
 
 
 @dataclass(frozen=True)
@@ -43,6 +66,9 @@ class CreateOrderCommand:
 
     lines: tuple[tuple[SkuId, int], ...]
     key: IdempotencyKey
+
+    def __post_init__(self) -> None:
+        _validate_lines(self.lines)
 
     def fingerprint(self) -> str:
         sorted_lines: list[list[SkuId | int]] = sorted(
@@ -103,6 +129,9 @@ class CreateReceiptCommand:
     lines: tuple[tuple[SkuId, int], ...]
     key: IdempotencyKey
 
+    def __post_init__(self) -> None:
+        _validate_lines(self.lines)
+
     def fingerprint(self) -> str:
         sorted_lines: list[list[SkuId | int]] = sorted(
             ([sku, qty] for sku, qty in self.lines),
@@ -130,6 +159,9 @@ class ReceiveCommand:
     location_id: LocationId
     lines: tuple[tuple[SkuId, int], ...]
     key: IdempotencyKey
+
+    def __post_init__(self) -> None:
+        _validate_lines(self.lines)
 
     def fingerprint(self) -> str:
         sorted_lines: list[list[SkuId | int]] = sorted(
@@ -195,6 +227,9 @@ class CreateReturnCommand:
     order_id: OrderId
     lines: tuple[tuple[SkuId, int], ...]
     key: IdempotencyKey
+
+    def __post_init__(self) -> None:
+        _validate_lines(self.lines)
 
     def fingerprint(self) -> str:
         sorted_lines: list[list[SkuId | int]] = sorted(

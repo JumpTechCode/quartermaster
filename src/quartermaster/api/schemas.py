@@ -1,7 +1,12 @@
 """Pydantic v2 request/response models for the HTTP boundary.
 
-Validation that needs no database lives here (non-empty lines, positive
-quantities, no duplicate SKUs in one request); everything else is enforced
+These models give HTTP clients early, field-located 422s for the shape rules
+(non-empty lines, positive quantities within the column ceiling, no duplicate
+SKUs in one request). The same rules also hold *below* HTTP — command
+construction re-checks them (``InvalidCommandLines``) and the storage CHECKs back
+them — so callers that bypass the API (workers, the load harness, fixtures) get
+the same deterministic rejection rather than a later opaque breach (issue #74).
+Everything stateful (existence, state-machine legality, stock guards) is enforced
 below HTTP by the domain and the database.
 """
 
