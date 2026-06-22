@@ -18,7 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from loadtest.metrics import StrategyMetrics, summarize
 from loadtest.runner import drive
 from loadtest.strategies import STRATEGIES, guarded_uow_factory
-from loadtest.workload import allocate_thunk, seed_comparative, truncate_all
+from loadtest.workload import (
+    allocate_thunk,
+    chain_thunk,
+    seed_comparative,
+    seed_mixed,
+    truncate_all,
+)
 from quartermaster.adapters.postgres.identifiers import new_order_id
 from quartermaster.adapters.postgres.tables import (
     location,
@@ -181,3 +187,38 @@ async def assert_exactly_once(engine: AsyncEngine, *, k: int, qty: int) -> Exact
         movement_rows=int(movement_rows),
         reservation_rows=int(reservation_rows),
     )
+
+
+async def run_mixed(
+    engine: AsyncEngine,
+    *,
+    seed: int,
+    n_chains: int,
+    qty: int,
+    concurrency: int,
+    dup_fraction: float,
+    return_fraction: float,
+) -> tuple[StrategyMetrics, OracleReport]:
+    """Drive ``n_chains`` full document chains concurrently under the production
+    strategy, with seeded duplicate-injection and RMA fractions; then audit.
+
+    Retries are not instrumented here (the ``run_*`` wrappers use the real sleep,
+    not the counting one) — mixed mode proves the full invariant set + throughput,
+    not the thrash metric, which is the comparative run's job (design spec §7.2).
+    """
+    await truncate_all(engine)
+    rng = random.Random(seed)
+    seeded = await seed_mixed(engine, n_chains=n_chains, qty=qty, rng=rng)
+    uow_factory = guarded_uow_factory(engine)
+    thunks = [
+        chain_thunk(
+            uow_factory,
+            chain,
+            idx=i,
+            dup_step=(rng.random() < dup_fraction),
+            do_return=(rng.random() < return_fraction),
+        )
+        for i, chain in enumerate(seeded.chains)
+    ]
+    samples, wall = await drive(thunks, concurrency=concurrency, rand=rng.random)
+    return summarize("mixed", samples, wall), await run_oracle(postgres_read_uow_factory(engine))

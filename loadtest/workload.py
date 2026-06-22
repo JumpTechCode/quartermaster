@@ -20,6 +20,7 @@ from loadtest.runner import CommandThunk, Rand, Sleep
 from quartermaster.adapters.postgres.identifiers import (
     new_movement_id,
     new_order_id,
+    new_receipt_id,
     new_reservation_id,
 )
 from quartermaster.adapters.postgres.tables import (
@@ -33,10 +34,20 @@ from quartermaster.adapters.postgres.tables import (
 from quartermaster.application.clock import system_clock
 from quartermaster.application.commands import AllocateCommand
 from quartermaster.application.envelope import execute
-from quartermaster.application.handlers.allocate import allocate
+from quartermaster.application.handlers.allocate import allocate, run_allocate
+from quartermaster.application.handlers.arrive import run_arrive
+from quartermaster.application.handlers.close_receipt import run_close_receipt
+from quartermaster.application.handlers.create_order import run_create_order
+from quartermaster.application.handlers.create_receipt import run_create_receipt
+from quartermaster.application.handlers.create_return import run_create_return
+from quartermaster.application.handlers.pack import run_pack
+from quartermaster.application.handlers.pick import run_pick
+from quartermaster.application.handlers.putaway import run_putaway
+from quartermaster.application.handlers.receive import run_receive
+from quartermaster.application.handlers.ship import run_ship
 from quartermaster.application.ports import UnitOfWork, UnitOfWorkFactory
 from quartermaster.application.results import AllocateResult
-from quartermaster.domain.ids import IdempotencyKey, OrderId, SkuId
+from quartermaster.domain.ids import IdempotencyKey, LocationId, OrderId, SkuId
 from quartermaster.domain.state_machines import OrderState
 
 # Children before parents: a TRUNCATE ... CASCADE order that mirrors the
@@ -158,5 +169,163 @@ def allocate_thunk(
         return await execute(
             uow_factory, command, handler, AllocateResult.decode, sleep=sleep, rand=rand
         )
+
+    return thunk
+
+
+@dataclass(frozen=True)
+class ChainSpec:
+    """One independent document chain: a SKU and its receiving + shelf cells."""
+
+    sku_id: SkuId
+    receiving: LocationId
+    shelf: LocationId
+    qty: int
+
+
+@dataclass(frozen=True)
+class MixedSeed:
+    chains: tuple[ChainSpec, ...]
+
+
+async def seed_mixed(
+    engine: AsyncEngine, *, n_chains: int, qty: int, rng: random.Random
+) -> MixedSeed:
+    """Seed ``n_chains`` independent (SKU, receiving cell, shelf cell) triples.
+
+    Independent chains exercise every command path under concurrent load without
+    cross-chain contention, so a correct engine must leave the oracle green; the
+    comparative run (Task 6) is where contention is concentrated. ``rng`` is taken
+    for signature parity with seed_comparative and future shared-SKU variants.
+    """
+    chains: list[ChainSpec] = []
+    async with engine.begin() as conn:
+        for i in range(n_chains):
+            s = SkuId(f"MIX-{i}")
+            recv = LocationId(f"R{i}")
+            shelf = LocationId(f"H{i}")
+            await conn.execute(sku.insert().values(sku_id=s, description="mix", unit="each"))
+            await conn.execute(location.insert().values(location_id=recv, kind="receiving"))
+            await conn.execute(location.insert().values(location_id=shelf, kind="shelf"))
+            chains.append(ChainSpec(sku_id=s, receiving=recv, shelf=shelf, qty=qty))
+    return MixedSeed(chains=tuple(chains))
+
+
+def chain_thunk(
+    uow_factory: UnitOfWorkFactory,
+    chain: ChainSpec,
+    *,
+    idx: int,
+    dup_step: bool,
+    do_return: bool,
+) -> CommandThunk:
+    """Drive one chain end to end: inbound receipt → putaway → outbound → ship.
+
+    ``dup_step`` re-fires the allocate with the same key (duplicate injection;
+    exactly-once must absorb it). ``do_return`` appends an RMA tail that re-enters
+    the shipped units (create_return → arrive → receive → putaway → close).
+
+    Receipt lifecycle order is load-bearing: the state machine is
+    EXPECTED → ARRIVED → RECEIVING → RECEIVED → PUTAWAY_COMPLETE → CLOSED, so
+    putaway (received → putaway_complete) MUST precede close (putaway_complete →
+    closed); reversing them raises IllegalTransition and aborts the chain.
+    """
+
+    async def thunk(sleep: Sleep, rand: Rand) -> None:
+        s, recv, shelf, q = chain.sku_id, chain.receiving, chain.shelf, chain.qty
+        kp = f"mix-{idx}"
+        receipt = await run_create_receipt(
+            uow_factory,
+            ((s, q),),
+            IdempotencyKey(f"{kp}-cr"),
+            now=system_clock,
+            new_receipt_id=new_receipt_id,
+        )
+        rid = receipt.receipt_id
+        await run_arrive(uow_factory, rid, IdempotencyKey(f"{kp}-ar"))
+        await run_receive(
+            uow_factory,
+            rid,
+            recv,
+            ((s, q),),
+            IdempotencyKey(f"{kp}-rc"),
+            now=system_clock,
+            new_movement_id=new_movement_id,
+        )
+        await run_putaway(
+            uow_factory,
+            rid,
+            recv,
+            shelf,
+            IdempotencyKey(f"{kp}-pa"),
+            now=system_clock,
+            new_movement_id=new_movement_id,
+        )
+        await run_close_receipt(uow_factory, rid, IdempotencyKey(f"{kp}-cl"))
+        order = await run_create_order(
+            uow_factory,
+            ((s, q),),
+            IdempotencyKey(f"{kp}-co"),
+            now=system_clock,
+            new_order_id=new_order_id,
+        )
+        oid = order.order_id
+        allocate_key = IdempotencyKey(f"{kp}-al")
+        await run_allocate(
+            uow_factory,
+            oid,
+            allocate_key,
+            now=system_clock,
+            new_reservation_id=new_reservation_id,
+            new_movement_id=new_movement_id,
+        )
+        if dup_step:
+            await run_allocate(
+                uow_factory,
+                oid,
+                allocate_key,
+                now=system_clock,
+                new_reservation_id=new_reservation_id,
+                new_movement_id=new_movement_id,
+            )
+        await run_pick(
+            uow_factory,
+            oid,
+            IdempotencyKey(f"{kp}-pk"),
+            now=system_clock,
+            new_movement_id=new_movement_id,
+        )
+        await run_pack(uow_factory, oid, IdempotencyKey(f"{kp}-pck"))
+        await run_ship(uow_factory, oid, IdempotencyKey(f"{kp}-sh"))
+        if do_return:
+            rma = await run_create_return(
+                uow_factory,
+                oid,
+                ((s, q),),
+                IdempotencyKey(f"{kp}-rt"),
+                now=system_clock,
+                new_receipt_id=new_receipt_id,
+            )
+            rrid = rma.receipt_id
+            await run_arrive(uow_factory, rrid, IdempotencyKey(f"{kp}-rt-ar"))
+            await run_receive(
+                uow_factory,
+                rrid,
+                recv,
+                ((s, q),),
+                IdempotencyKey(f"{kp}-rt-rc"),
+                now=system_clock,
+                new_movement_id=new_movement_id,
+            )
+            await run_putaway(
+                uow_factory,
+                rrid,
+                recv,
+                shelf,
+                IdempotencyKey(f"{kp}-rt-pa"),
+                now=system_clock,
+                new_movement_id=new_movement_id,
+            )
+            await run_close_receipt(uow_factory, rrid, IdempotencyKey(f"{kp}-rt-cl"))
 
     return thunk
