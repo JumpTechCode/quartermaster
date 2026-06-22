@@ -54,3 +54,23 @@ async def test_get_order_missing_404() -> None:
         resp = await client.get(f"/orders/{_OID}")
     assert resp.status_code == 404
     assert resp.json()["error"] == "order_not_found"
+
+
+async def test_get_order_reads_through_the_read_factory() -> None:
+    """GET routes use deps.read_uow_factory (REPEATABLE READ), not the write factory."""
+    order = Order(
+        order_id=_OID,
+        state=OrderState.CREATED,
+        version=1,
+        created_at=datetime(2026, 6, 18, tzinfo=UTC),
+    )
+    read_uow = FakeUnitOfWork(orders=FakeOrderRepo(order=order, lines=[]))
+    write_uow = FakeUnitOfWork(orders=FakeOrderRepo(order=None))  # a 404 if reads hit it
+    deps = make_deps(write_uow, order_id=_OID, read_uow=read_uow)
+    app = create_app(deps)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://t"
+    ) as client:
+        resp = await client.get(f"/orders/{_OID}")
+    assert resp.status_code == 200
+    assert resp.json()["version"] == 1

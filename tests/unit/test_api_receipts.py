@@ -139,6 +139,23 @@ async def test_get_receipt_404_when_missing() -> None:
     assert resp.json()["error"] == "receipt_not_found"
 
 
+async def test_get_receipt_reads_through_the_read_factory() -> None:
+    """GET routes use deps.read_uow_factory (REPEATABLE READ), not the write factory."""
+    receipt = Receipt(
+        ReceiptId(_RCID), ReceiptKind.SUPPLIER_RECEIPT, ReceiptState.EXPECTED, 1, _FIXED, None
+    )
+    read_uow = FakeUnitOfWork(receipts=FakeReceiptRepo(receipt=receipt, lines=[]))
+    write_uow = FakeUnitOfWork(receipts=FakeReceiptRepo(receipt=None))  # a 404 if reads hit it
+    deps = make_deps(write_uow, receipt_id=ReceiptId(_RCID), read_uow=read_uow)
+    app = create_app(deps)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://t"
+    ) as client:
+        resp = await client.get(f"/receipts/{_RCID}")
+    assert resp.status_code == 200
+    assert resp.json()["version"] == 1
+
+
 async def test_putaway_relocates_and_returns_putaway_complete() -> None:
     line = ReceiptLine(ReceiptId(_RCID), SkuId("A"), 5, 5)
     receipt = Receipt(

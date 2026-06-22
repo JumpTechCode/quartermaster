@@ -26,7 +26,10 @@ from quartermaster.adapters.postgres.identifiers import (
     new_receipt_id,
     new_reservation_id,
 )
-from quartermaster.adapters.postgres.unit_of_work import postgres_uow_factory
+from quartermaster.adapters.postgres.unit_of_work import (
+    postgres_read_uow_factory,
+    postgres_uow_factory,
+)
 from quartermaster.api.app import create_app
 from quartermaster.api.deps import Deps
 from quartermaster.application.clock import system_clock
@@ -43,6 +46,7 @@ def build_app() -> FastAPI:
     engine = create_engine(settings.database_url)
     deps = Deps(
         uow_factory=postgres_uow_factory(engine),
+        read_uow_factory=postgres_read_uow_factory(engine),
         now=system_clock,
         new_order_id=new_order_id,
         new_receipt_id=new_receipt_id,

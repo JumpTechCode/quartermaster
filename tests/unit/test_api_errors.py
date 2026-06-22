@@ -283,6 +283,7 @@ def _boom_uow_factory() -> UnitOfWorkFactory:
 def _boom_client() -> httpx.AsyncClient:
     deps = Deps(
         uow_factory=_boom_uow_factory(),
+        read_uow_factory=_boom_uow_factory(),
         now=lambda: _FIXED,
         new_order_id=lambda: _OID,
         new_receipt_id=lambda: _RCID,

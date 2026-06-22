@@ -20,7 +20,10 @@ from quartermaster.adapters.postgres.identifiers import (
     new_receipt_id,
     new_reservation_id,
 )
-from quartermaster.adapters.postgres.unit_of_work import postgres_uow_factory
+from quartermaster.adapters.postgres.unit_of_work import (
+    postgres_read_uow_factory,
+    postgres_uow_factory,
+)
 from quartermaster.application.clock import system_clock
 from quartermaster.application.handlers.allocate import run_allocate
 from quartermaster.application.handlers.arrive import run_arrive
@@ -186,7 +189,7 @@ async def test_oracle_agrees_with_real_command_path(committed_db: AsyncEngine) -
         new_movement_id=new_movement_id,
     )
 
-    report = await run_oracle(factory)
+    report = await run_oracle(postgres_read_uow_factory(committed_db))
     assert report.ok, [
         (c.name, c.status, c.discrepancies) for c in report.checks if c.status is CheckStatus.FAILED
     ]
@@ -206,7 +209,7 @@ async def test_oracle_detects_on_hand_drift(committed_db: AsyncEngine) -> None:
                 " WHERE sku_id='S' AND location_id='A1'"
             )
         )
-    report = await run_oracle(factory)
+    report = await run_oracle(postgres_read_uow_factory(committed_db))
     check = report.check("conservation_on_hand")
     assert check.status is CheckStatus.FAILED
     d = next(d for d in check.discrepancies if d.location_id == A1)
@@ -239,7 +242,7 @@ async def test_oracle_detects_oversell(committed_db: AsyncEngine) -> None:
     # delete the RECEIVE movement: ever_received drops below shipped+on_hand
     async with committed_db.begin() as conn:
         await conn.execute(text("DELETE FROM movement WHERE type='receive'"))
-    report = await run_oracle(factory)
+    report = await run_oracle(postgres_read_uow_factory(committed_db))
     assert report.check("no_oversell").status is CheckStatus.FAILED
 
 
@@ -270,5 +273,5 @@ async def test_oracle_detects_reserved_drift(committed_db: AsyncEngine) -> None:
                 " 'A1', 1, gen_random_uuid(), 'corrupt')"
             )
         )
-    report = await run_oracle(factory)
+    report = await run_oracle(postgres_read_uow_factory(committed_db))
     assert report.check("conservation_reserved").status is CheckStatus.FAILED

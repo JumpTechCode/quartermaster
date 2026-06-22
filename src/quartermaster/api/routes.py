@@ -79,7 +79,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/orders/{order_id}", response_model=OrderResponse)
     async def get_order(order_id: UUID) -> OrderResponse:
-        view = await load_order(deps.uow_factory, OrderId(order_id))
+        view = await load_order(deps.read_uow_factory, OrderId(order_id))
         if view is None:
             raise OrderNotFound(f"order {order_id} does not exist")
         return OrderResponse(
@@ -206,7 +206,7 @@ def build_router(deps: Deps) -> APIRouter:
 
     @router.get("/receipts/{receipt_id}", response_model=ReceiptResponse)
     async def get_receipt(receipt_id: UUID) -> ReceiptResponse:
-        view = await load_receipt(deps.uow_factory, ReceiptId(receipt_id))
+        view = await load_receipt(deps.read_uow_factory, ReceiptId(receipt_id))
         if view is None:
             raise ReceiptNotFound(f"receipt {receipt_id} does not exist")
         return ReceiptResponse(

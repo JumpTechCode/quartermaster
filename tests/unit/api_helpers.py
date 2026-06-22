@@ -20,11 +20,13 @@ def make_deps(
     *,
     order_id: OrderId | None = None,
     receipt_id: ReceiptId | None = None,
+    read_uow: FakeUnitOfWork | None = None,
 ) -> Deps:
     oid = order_id or OrderId(UUID("00000000-0000-7000-8000-000000000001"))
     rcid = receipt_id or _RCID
     return Deps(
         uow_factory=fake_factory(uow),
+        read_uow_factory=fake_factory(read_uow if read_uow is not None else uow),
         now=lambda: _FIXED,
         new_order_id=lambda: oid,
         new_receipt_id=lambda: rcid,

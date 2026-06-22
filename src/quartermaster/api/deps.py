@@ -12,9 +12,15 @@ from quartermaster.domain.ids import MovementId, OrderId, ReceiptId, Reservation
 
 @dataclass(frozen=True)
 class Deps:
-    """Concrete seams, typed only against application/domain so api/ stays adapter-free."""
+    """Concrete seams, typed only against application/domain so api/ stays adapter-free.
+
+    Commands run through ``uow_factory`` (READ COMMITTED, the guarded write path);
+    multi-statement reads run through ``read_uow_factory`` (REPEATABLE READ) so a
+    header and its lines come from one MVCC snapshot (issue #70).
+    """
 
     uow_factory: UnitOfWorkFactory
+    read_uow_factory: UnitOfWorkFactory
     now: Clock
     new_order_id: Callable[[], OrderId]
     new_receipt_id: Callable[[], ReceiptId]

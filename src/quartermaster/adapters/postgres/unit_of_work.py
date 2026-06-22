@@ -672,12 +672,15 @@ class PostgresUnitOfWork:
     idempotency: IdempotencyRepo
     catalog: CatalogRepo
 
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(self, engine: AsyncEngine, *, isolation_level: str | None = None) -> None:
         self._engine = engine
+        self._isolation_level = isolation_level
         self._finished = False
 
     async def __aenter__(self) -> PostgresUnitOfWork:
         self._conn = await self._engine.connect()
+        if self._isolation_level is not None:
+            await self._conn.execution_options(isolation_level=self._isolation_level)
         self._trans = await self._conn.begin()
         self.stock = PgStockRepo(self._conn)
         self.orders = PgOrderRepo(self._conn)
@@ -707,5 +710,26 @@ def postgres_uow_factory(engine: AsyncEngine) -> UnitOfWorkFactory:
 
     def factory() -> UnitOfWork:
         return PostgresUnitOfWork(engine)
+
+    return factory
+
+
+def postgres_read_uow_factory(engine: AsyncEngine) -> UnitOfWorkFactory:
+    """Return a read-only UnitOfWorkFactory pinned to REPEATABLE READ (issue #70).
+
+    Read paths serve multi-statement views -- order header + lines, the oracle's
+    four base-table reads -- inside one transaction. Under the engine's default
+    READ COMMITTED each statement takes a fresh snapshot, so a command committing
+    mid-read is partially visible: a header/version paired with line quantities
+    that never atomically coexisted, or an oracle cross-check folded over two
+    instants. Pinning REPEATABLE READ gives every statement the one snapshot taken
+    at the first read, so the view is internally consistent. The pin is per
+    transaction (reset on return to pool), so it does not touch the guarded write
+    paths, whose conditional ``WHERE`` is the guard and which stay READ COMMITTED
+    (ADR-0005). Read-only and never committed, so it cannot raise 40001.
+    """
+
+    def factory() -> UnitOfWork:
+        return PostgresUnitOfWork(engine, isolation_level="REPEATABLE READ")
 
     return factory

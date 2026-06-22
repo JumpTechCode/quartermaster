@@ -193,7 +193,17 @@ def build_report(
 
 
 async def run_oracle(uow_factory: UnitOfWorkFactory) -> OracleReport:
-    """Read the store once (no commit) and return the invariant report."""
+    """Read the store once (no commit) and return the invariant report.
+
+    The four reads cross-check aggregates against each other, so they must fold
+    over a single instant. Pass a snapshot-isolated factory
+    (``postgres_read_uow_factory``, REPEATABLE READ): under the engine's default
+    READ COMMITTED each statement takes a fresh snapshot, so a command committing
+    between the ledger read and the stock read yields a torn cross-check -- a
+    false FAIL on consistent data, or a real drift masked by a compensating pair
+    (issue #70). Run against a quiesced store or under snapshot isolation; never
+    on the command path (no envelope, no idempotency, no commit).
+    """
     async with uow_factory() as uow:
         totals = await uow.movements.aggregate()
         cells = await uow.stock.all_cells()

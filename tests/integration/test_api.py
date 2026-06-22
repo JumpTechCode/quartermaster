@@ -13,7 +13,10 @@ from quartermaster.adapters.postgres.identifiers import (
     new_reservation_id,
 )
 from quartermaster.adapters.postgres.tables import reservation
-from quartermaster.adapters.postgres.unit_of_work import postgres_uow_factory
+from quartermaster.adapters.postgres.unit_of_work import (
+    postgres_read_uow_factory,
+    postgres_uow_factory,
+)
 from quartermaster.api.app import create_app
 from quartermaster.api.deps import Deps
 from quartermaster.application.clock import system_clock
@@ -23,6 +26,7 @@ from tests.integration.seed import assert_invariants, seed_sku_locations_stock
 def _client(engine: AsyncEngine) -> httpx.AsyncClient:
     deps = Deps(
         uow_factory=postgres_uow_factory(engine),
+        read_uow_factory=postgres_read_uow_factory(engine),
         now=system_clock,
         new_order_id=new_order_id,
         new_receipt_id=new_receipt_id,
